@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FilterBar } from "../FilterBar";
 import { useFilterState } from "@/hooks/use-filter-state";
@@ -7,11 +7,11 @@ import { evaluateExpression } from "@/lib/filter-engine";
 import { createEmptyState, createCondition, addCondition } from "@/lib/filter-utils";
 
 const mockData = [
-  { id: "1", type: "XSS", status: "Blocked", impact: "High", response_code: 200, host: "api.example.com" },
-  { id: "2", type: "SQL Injection", status: "Monitored", impact: "Medium", response_code: 401, host: "orders.example.com" },
-  { id: "3", type: "XSS", status: "Started", impact: "Low", response_code: 500, host: "api.example.com" },
-  { id: "4", type: "BOLA Attack", status: "Blocked", impact: "High", response_code: 403, host: "admin.example.com" },
-  { id: "5", type: "Brute Force", status: "Monitored", impact: "Medium", response_code: 404, host: "login.example.com" },
+  { id: "1", type: "XSS", status: "Blocked", impact: "High", response_code: 200, host: "api.example.com", endpoints: "GET /v1/api/search", parameter: "query.filter" },
+  { id: "2", type: "SQL Injection", status: "Monitored", impact: "Medium", response_code: 401, host: "orders.example.com", endpoints: "POST /v1/auth/login", parameter: "body.username" },
+  { id: "3", type: "XSS", status: "Started", impact: "Low", response_code: 500, host: "api.example.com", endpoints: "GET /v1/api/data", parameter: "query.page" },
+  { id: "4", type: "BOLA Attack", status: "Blocked", impact: "High", response_code: 403, host: "admin.example.com", endpoints: "POST /v1/admin/exec", parameter: "body.command" },
+  { id: "5", type: "Brute Force", status: "Monitored", impact: "Medium", response_code: 404, host: "login.example.com", endpoints: "POST /v1/auth/login", parameter: "body.password" },
 ];
 
 function TestHarness() {
@@ -20,6 +20,7 @@ function TestHarness() {
     addFilter,
     removeFilter,
     updateFilterValues,
+    updateOperator,
     clearAll,
   } = useFilterState();
 
@@ -32,6 +33,7 @@ function TestHarness() {
         onAddFilter={addFilter}
         onRemoveFilter={removeFilter}
         onUpdateFilterValues={updateFilterValues}
+        onUpdateOperator={updateOperator}
         onClearAll={clearAll}
       />
       <div data-testid="result-count">{filtered.length} results</div>
@@ -149,5 +151,25 @@ describe("Filter Flow Integration", () => {
     const result = evaluateExpression(mockData, state);
     expect(result).toHaveLength(1);
     expect((result[0] as typeof mockData[0]).id).toBe("1");
+  });
+
+  it("operator change: switch from 'is' to 'is not' updates filtered results", async () => {
+    const user = userEvent.setup();
+    render(<TestHarness />);
+
+    // Add Status is Blocked filter (matches 2 records)
+    await user.click(screen.getByLabelText("Add filter"));
+    await user.click(screen.getByText("Status"));
+    await user.click(screen.getByLabelText("Blocked"));
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+
+    expect(screen.getByTestId("result-count")).toHaveTextContent("2 results");
+
+    // Change operator to "is not"
+    await user.click(screen.getByLabelText("Change Status operator"));
+    await user.click(screen.getByText("is not"));
+
+    // Now shows everything EXCEPT Blocked (5 - 2 = 3)
+    expect(screen.getByTestId("result-count")).toHaveTextContent("3 results");
   });
 });

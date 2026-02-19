@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FilterPalette } from "../FilterPalette";
-import type { FilterFieldDef } from "@/types/filters";
 
 describe("FilterPalette", () => {
   it("renders field groups when open", () => {
@@ -23,13 +22,13 @@ describe("FilterPalette", () => {
     expect(screen.getByText("HTTP status code")).toBeInTheDocument();
     expect(screen.getByText("Impact")).toBeInTheDocument();
 
-    // Target & Context fields (disabled)
+    // Target & Context fields
     expect(screen.getByText("Endpoint")).toBeInTheDocument();
     expect(screen.getByText("Hostname")).toBeInTheDocument();
     expect(screen.getByText("Parameter")).toBeInTheDocument();
   });
 
-  it("shows 'Coming soon' on text fields", () => {
+  it("all fields are enabled and selectable", () => {
     render(
       <FilterPalette
         open={true}
@@ -40,11 +39,11 @@ describe("FilterPalette", () => {
       </FilterPalette>,
     );
 
-    const comingSoonLabels = screen.getAllByText("Coming soon");
-    expect(comingSoonLabels).toHaveLength(3);
+    // No "Coming soon" labels
+    expect(screen.queryByText("Coming soon")).not.toBeInTheDocument();
   });
 
-  it("calls onSelectField when clicking an enabled field", async () => {
+  it("calls onSelectField when clicking an enum field", async () => {
     const user = userEvent.setup();
     const onSelectField = vi.fn();
 
@@ -68,7 +67,7 @@ describe("FilterPalette", () => {
     );
   });
 
-  it("does not call onSelectField for disabled fields", async () => {
+  it("calls onSelectField when clicking a text field", async () => {
     const user = userEvent.setup();
     const onSelectField = vi.fn();
 
@@ -83,7 +82,13 @@ describe("FilterPalette", () => {
     );
 
     await user.click(screen.getByText("Endpoint"));
-    expect(onSelectField).not.toHaveBeenCalled();
+    expect(onSelectField).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "endpoints",
+        label: "Endpoint",
+        type: "text",
+      }),
+    );
   });
 
   it("shows group headings", () => {

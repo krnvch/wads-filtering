@@ -92,3 +92,7 @@ export function getFieldsByCategory(
 export function getEnumFields(): FilterFieldDef[] {
   return FILTER_FIELDS.filter((f) => f.type === "enum");
 }
+
+export function getTextFields(): FilterFieldDef[] {
+  return FILTER_FIELDS.filter((f) => f.type === "text");
+}

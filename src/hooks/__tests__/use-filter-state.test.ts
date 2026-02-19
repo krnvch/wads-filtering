@@ -135,6 +135,51 @@ describe("useFilterState", () => {
     });
   });
 
+  describe("updateOperator", () => {
+    it("updates operator for an existing filter", () => {
+      const { result } = renderHook(() => useFilterState());
+
+      let id: string;
+      act(() => {
+        id = result.current.addFilter("status", ["Blocked"]);
+      });
+
+      act(() => {
+        result.current.updateOperator(id, "is_not");
+      });
+
+      const child = result.current.filterState.expression.children[0];
+      if (isFilterCondition(child)) {
+        expect(child.operator).toBe("is_not");
+        expect(child.values).toEqual(["Blocked"]);
+      }
+    });
+
+    it("preserves other filters when updating operator", () => {
+      const { result } = renderHook(() => useFilterState());
+
+      let id1: string;
+      act(() => {
+        id1 = result.current.addFilter("status", ["Blocked"]);
+        result.current.addFilter("type", ["XSS"]);
+      });
+
+      act(() => {
+        result.current.updateOperator(id1, "contains");
+      });
+
+      expect(result.current.activeFilterCount).toBe(2);
+      const child0 = result.current.filterState.expression.children[0];
+      const child1 = result.current.filterState.expression.children[1];
+      if (isFilterCondition(child0)) {
+        expect(child0.operator).toBe("contains");
+      }
+      if (isFilterCondition(child1)) {
+        expect(child1.operator).toBe("is");
+      }
+    });
+  });
+
   describe("clearAll", () => {
     it("removes all filters", () => {
       const { result } = renderHook(() => useFilterState());

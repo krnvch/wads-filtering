@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { FilterBar } from "@/components/filters/FilterBar";
-import { useFilterState } from "@/hooks/use-filter-state";
+import { useFilterUrlState } from "@/hooks/use-filter-url-state";
 import { evaluateExpression } from "@/lib/filter-engine";
 
 interface Attack {
@@ -54,14 +54,28 @@ const impactColors: Record<string, string> = {
   Low: "text-green-600 dark:text-green-400",
 };
 
-export default function Home() {
+function computeTextSuggestions(attacks: Attack[]): Record<string, string[]> {
+  return {
+    endpoints: [...new Set(attacks.map((a) => a.endpoints))],
+    host: [...new Set(attacks.map((a) => a.host))],
+    parameter: [...new Set(attacks.map((a) => a.parameter))],
+  };
+}
+
+function HomeContent() {
   const {
     filterState,
     addFilter,
     removeFilter,
     updateFilterValues,
+    updateOperator,
     clearAll,
-  } = useFilterState();
+  } = useFilterUrlState();
+
+  const textSuggestions = useMemo(
+    () => computeTextSuggestions(MOCK_ATTACKS),
+    [],
+  );
 
   const filteredAttacks = useMemo(
     () =>
@@ -73,77 +87,85 @@ export default function Home() {
   );
 
   return (
+    <>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Attacks:{" "}
+          <span className="text-muted-foreground">
+            {filteredAttacks.length}
+          </span>
+        </h1>
+      </div>
+
+      <FilterBar
+        filterState={filterState}
+        onAddFilter={addFilter}
+        onRemoveFilter={removeFilter}
+        onUpdateFilterValues={updateFilterValues}
+        onUpdateOperator={updateOperator}
+        onClearAll={clearAll}
+        textSuggestions={textSuggestions}
+        className="mb-4"
+      />
+
+      <div className="rounded-lg border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="px-4 py-3 text-left font-medium">Attack Name</th>
+              <th className="px-4 py-3 text-left font-medium">Type</th>
+              <th className="px-4 py-3 text-left font-medium">Status</th>
+              <th className="px-4 py-3 text-left font-medium">Impact</th>
+              <th className="px-4 py-3 text-left font-medium">HTTP Status</th>
+              <th className="px-4 py-3 text-left font-medium">Hostname</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredAttacks.map((attack) => (
+              <tr
+                key={attack.id}
+                className="border-b transition-colors hover:bg-muted/50"
+              >
+                <td className="px-4 py-3 font-medium">{attack.name}</td>
+                <td className="px-4 py-3">{attack.type}</td>
+                <td className={`px-4 py-3 ${statusColors[attack.status]}`}>
+                  {attack.status}
+                </td>
+                <td className={`px-4 py-3 ${impactColors[attack.impact]}`}>
+                  {attack.impact}
+                </td>
+                <td className="px-4 py-3 font-mono text-muted-foreground">
+                  {attack.response_code}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {attack.host}
+                </td>
+              </tr>
+            ))}
+            {filteredAttacks.length === 0 && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-4 py-8 text-center text-muted-foreground"
+                >
+                  No attacks match the current filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+export default function Home() {
+  return (
     <div className="min-h-screen bg-background font-sans">
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Attacks:{" "}
-            <span className="text-muted-foreground">
-              {filteredAttacks.length}
-            </span>
-          </h1>
-        </div>
-
-        <FilterBar
-          filterState={filterState}
-          onAddFilter={addFilter}
-          onRemoveFilter={removeFilter}
-          onUpdateFilterValues={updateFilterValues}
-          onClearAll={clearAll}
-          className="mb-4"
-        />
-
-        <div className="rounded-lg border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">
-                  Attack Name
-                </th>
-                <th className="px-4 py-3 text-left font-medium">Type</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Impact</th>
-                <th className="px-4 py-3 text-left font-medium">
-                  HTTP Status
-                </th>
-                <th className="px-4 py-3 text-left font-medium">Hostname</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAttacks.map((attack) => (
-                <tr
-                  key={attack.id}
-                  className="border-b transition-colors hover:bg-muted/50"
-                >
-                  <td className="px-4 py-3 font-medium">{attack.name}</td>
-                  <td className="px-4 py-3">{attack.type}</td>
-                  <td className={`px-4 py-3 ${statusColors[attack.status]}`}>
-                    {attack.status}
-                  </td>
-                  <td className={`px-4 py-3 ${impactColors[attack.impact]}`}>
-                    {attack.impact}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-muted-foreground">
-                    {attack.response_code}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {attack.host}
-                  </td>
-                </tr>
-              ))}
-              {filteredAttacks.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-8 text-center text-muted-foreground"
-                  >
-                    No attacks match the current filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Suspense fallback={null}>
+          <HomeContent />
+        </Suspense>
       </main>
     </div>
   );

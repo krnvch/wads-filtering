@@ -6,18 +6,29 @@ import { Button } from "@/components/ui/button";
 import { FilterChip } from "./FilterChip";
 import { FilterPalette } from "./FilterPalette";
 import { EnumValueSelector } from "./EnumValueSelector";
+import { TextValueInput } from "./TextValueInput";
 import { BooleanConnector } from "./BooleanConnector";
 import { isFilterCondition } from "@/types/filters";
-import type { FilterState, FilterFieldDef } from "@/types/filters";
+import type {
+  FilterState,
+  FilterFieldDef,
+  FilterOperator,
+} from "@/types/filters";
 import { getFieldByKey } from "@/lib/filter-schema";
 import { cn } from "@/lib/utils";
 
 interface FilterBarProps {
   filterState: FilterState;
-  onAddFilter: (field: string, values: string[]) => void;
+  onAddFilter: (
+    field: string,
+    values: string[],
+    operator?: FilterOperator,
+  ) => void;
   onRemoveFilter: (id: string) => void;
   onUpdateFilterValues: (id: string, values: string[]) => void;
+  onUpdateOperator: (id: string, operator: FilterOperator) => void;
   onClearAll: () => void;
+  textSuggestions?: Record<string, string[]>;
   placeholder?: string;
   className?: string;
 }
@@ -27,7 +38,9 @@ export function FilterBar({
   onAddFilter,
   onRemoveFilter,
   onUpdateFilterValues,
+  onUpdateOperator,
   onClearAll,
+  textSuggestions,
   placeholder = "Filter...",
   className,
 }: FilterBarProps) {
@@ -40,15 +53,14 @@ export function FilterBar({
 
   const handleSelectField = useCallback((field: FilterFieldDef) => {
     setPaletteOpen(false);
-    if (field.type === "enum") {
-      setPendingField(field);
-      setPendingValues([]);
-    }
+    setPendingField(field);
+    setPendingValues([]);
   }, []);
 
   const handlePendingConfirm = useCallback(() => {
     if (pendingField && pendingValues.length > 0) {
-      onAddFilter(pendingField.key, pendingValues);
+      const defaultOp = pendingField.type === "text" ? "contains" : "is";
+      onAddFilter(pendingField.key, pendingValues, defaultOp);
     }
     setPendingField(null);
     setPendingValues([]);
@@ -58,7 +70,8 @@ export function FilterBar({
     (open: boolean) => {
       if (!open) {
         if (pendingField && pendingValues.length > 0) {
-          onAddFilter(pendingField.key, pendingValues);
+          const defaultOp = pendingField.type === "text" ? "contains" : "is";
+          onAddFilter(pendingField.key, pendingValues, defaultOp);
         }
         setPendingField(null);
         setPendingValues([]);
@@ -76,6 +89,37 @@ export function FilterBar({
     },
     [pendingField],
   );
+
+  const pendingSelector = pendingField ? (
+    pendingField.type === "text" ? (
+      <TextValueInput
+        open={true}
+        onOpenChange={handlePendingOpenChange}
+        fieldDef={pendingField}
+        selectedValues={pendingValues}
+        onSelectionChange={setPendingValues}
+        onConfirm={handlePendingConfirm}
+        suggestions={textSuggestions?.[pendingField.key]}
+      >
+        <span className="text-sm text-muted-foreground">
+          {pendingField.label}...
+        </span>
+      </TextValueInput>
+    ) : (
+      <EnumValueSelector
+        open={true}
+        onOpenChange={handlePendingOpenChange}
+        fieldDef={pendingField}
+        selectedValues={pendingValues}
+        onSelectionChange={setPendingValues}
+        onConfirm={handlePendingConfirm}
+      >
+        <span className="text-sm text-muted-foreground">
+          {pendingField.label}...
+        </span>
+      </EnumValueSelector>
+    )
+  ) : null;
 
   return (
     <div
@@ -99,26 +143,15 @@ export function FilterBar({
               fieldDef={fieldDef}
               onRemove={onRemoveFilter}
               onUpdateValues={onUpdateFilterValues}
+              onUpdateOperator={onUpdateOperator}
+              suggestions={textSuggestions?.[condition.field]}
             />
           </span>
         );
       })}
 
       {/* Pending field value selector (two-step add flow) */}
-      {pendingField && (
-        <EnumValueSelector
-          open={true}
-          onOpenChange={handlePendingOpenChange}
-          fieldDef={pendingField}
-          selectedValues={pendingValues}
-          onSelectionChange={setPendingValues}
-          onConfirm={handlePendingConfirm}
-        >
-          <span className="text-sm text-muted-foreground">
-            {pendingField.label}...
-          </span>
-        </EnumValueSelector>
-      )}
+      {pendingSelector}
 
       {/* Palette trigger — placeholder area */}
       {!pendingField && (

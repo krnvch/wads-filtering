@@ -4,7 +4,13 @@ import { useState, useCallback } from "react";
 import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EnumValueSelector } from "./EnumValueSelector";
-import type { FilterCondition, FilterFieldDef } from "@/types/filters";
+import { TextValueInput } from "./TextValueInput";
+import { OperatorSelector } from "./OperatorSelector";
+import type {
+  FilterCondition,
+  FilterFieldDef,
+  FilterOperator,
+} from "@/types/filters";
 import { cn } from "@/lib/utils";
 
 interface FilterChipProps {
@@ -12,6 +18,8 @@ interface FilterChipProps {
   fieldDef: FilterFieldDef;
   onRemove: (id: string) => void;
   onUpdateValues: (id: string, values: string[]) => void;
+  onUpdateOperator: (id: string, operator: FilterOperator) => void;
+  suggestions?: string[];
   className?: string;
 }
 
@@ -31,6 +39,8 @@ export function FilterChip({
   fieldDef,
   onRemove,
   onUpdateValues,
+  onUpdateOperator,
+  suggestions,
   className,
 }: FilterChipProps) {
   const [valuePopoverOpen, setValuePopoverOpen] = useState(false);
@@ -58,18 +68,33 @@ export function FilterChip({
     }
   }, [condition.id, pendingValues, onUpdateValues]);
 
-  return (
-    <Badge
-      variant="secondary"
-      className={cn(
-        "group relative gap-1 rounded-md py-1 pl-2 pr-2 text-sm font-normal",
-        className,
-      )}
-    >
-      <span className="text-foreground">{condition.fieldLabel}</span>
-      <span className="text-muted-foreground">
-        {formatOperator(condition.operator)}
-      </span>
+  const handleOperatorSelect = useCallback(
+    (operator: FilterOperator) => {
+      onUpdateOperator(condition.id, operator);
+    },
+    [condition.id, onUpdateOperator],
+  );
+
+  const valueEditor =
+    fieldDef.type === "text" ? (
+      <TextValueInput
+        open={valuePopoverOpen}
+        onOpenChange={handleOpenChange}
+        fieldDef={fieldDef}
+        selectedValues={pendingValues}
+        onSelectionChange={setPendingValues}
+        onConfirm={handleConfirm}
+        suggestions={suggestions}
+      >
+        <button
+          type="button"
+          className="cursor-pointer text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+          aria-label={`Edit ${condition.fieldLabel} values`}
+        >
+          {formatValues(condition.values)}
+        </button>
+      </TextValueInput>
+    ) : (
       <EnumValueSelector
         open={valuePopoverOpen}
         onOpenChange={handleOpenChange}
@@ -86,6 +111,31 @@ export function FilterChip({
           {formatValues(condition.values)}
         </button>
       </EnumValueSelector>
+    );
+
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        "group relative gap-1 rounded-md py-1 pl-2 pr-2 text-sm font-normal",
+        className,
+      )}
+    >
+      <span className="text-foreground">{condition.fieldLabel}</span>
+      <OperatorSelector
+        currentOperator={condition.operator}
+        fieldType={fieldDef.type}
+        onSelect={handleOperatorSelect}
+      >
+        <button
+          type="button"
+          className="cursor-pointer text-muted-foreground hover:text-foreground"
+          aria-label={`Change ${condition.fieldLabel} operator`}
+        >
+          {formatOperator(condition.operator)}
+        </button>
+      </OperatorSelector>
+      {valueEditor}
       <button
         type="button"
         onClick={() => onRemove(condition.id)}

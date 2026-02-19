@@ -21,6 +21,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
       />,
     );
@@ -35,6 +36,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
         placeholder="Search attacks..."
       />,
@@ -52,6 +54,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
       />,
     );
@@ -72,6 +75,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
       />,
     );
@@ -88,6 +92,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
       />,
     );
@@ -102,6 +107,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
       />,
     );
@@ -120,6 +126,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={onClearAll}
       />,
     );
@@ -137,6 +144,7 @@ describe("FilterBar", () => {
         onAddFilter={vi.fn()}
         onRemoveFilter={vi.fn()}
         onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
         onClearAll={vi.fn()}
       />,
     );
@@ -146,5 +154,50 @@ describe("FilterBar", () => {
     // Palette should show field options
     expect(screen.getByText("Attack type")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
+  });
+
+  it("shows text input when a text field is selected from palette", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    // Open palette and select a text field
+    await user.click(screen.getByLabelText("Add filter"));
+    await user.click(screen.getByText("Endpoint"));
+
+    // Should show text input popover
+    expect(screen.getByLabelText("Enter Endpoint value")).toBeInTheDocument();
+  });
+
+  it("passes onUpdateOperator to chips", async () => {
+    const user = userEvent.setup();
+    const onUpdateOperator = vi.fn();
+    const state = makeStateWithFilters({ field: "status", values: ["Blocked"] });
+
+    render(
+      <FilterBar
+        filterState={state}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={onUpdateOperator}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    // Click the operator on the chip
+    await user.click(screen.getByLabelText("Change Status operator"));
+    await user.click(screen.getByText("is not"));
+
+    expect(onUpdateOperator).toHaveBeenCalled();
   });
 });

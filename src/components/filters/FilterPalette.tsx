@@ -62,13 +62,11 @@ export function FilterPalette({
                 <CommandItem
                   key={field.key}
                   value={field.key}
-                  disabled
-                  className="opacity-50"
+                  onSelect={() => {
+                    onSelectField(field);
+                  }}
                 >
                   {field.label}
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    Coming soon
-                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

@@ -6,6 +6,7 @@ import {
   addCondition,
   removeCondition,
   updateConditionValues,
+  updateConditionOperator,
   generateFilterId,
 } from "../filter-utils";
 
@@ -157,5 +158,48 @@ describe("updateConditionValues", () => {
     updateConditionValues(state, condition.id, ["Monitored"]);
     const original = state.expression.children[0];
     expect("values" in original && original.values).toEqual(["Blocked"]);
+  });
+});
+
+describe("updateConditionOperator", () => {
+  it("updates operator for condition by id", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked"]);
+    state = addCondition(state, condition);
+
+    const newState = updateConditionOperator(state, condition.id, "is_not");
+    const updated = newState.expression.children[0];
+    expect("operator" in updated && updated.operator).toBe("is_not");
+  });
+
+  it("preserves values when changing operator", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked", "Monitored"]);
+    state = addCondition(state, condition);
+
+    const newState = updateConditionOperator(state, condition.id, "is_not");
+    const updated = newState.expression.children[0];
+    expect("values" in updated && updated.values).toEqual(["Blocked", "Monitored"]);
+  });
+
+  it("does not mutate original state", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked"]);
+    state = addCondition(state, condition);
+
+    updateConditionOperator(state, condition.id, "contains");
+    const original = state.expression.children[0];
+    expect("operator" in original && original.operator).toBe("is");
+  });
+
+  it("no-ops if id does not exist", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked"]);
+    state = addCondition(state, condition);
+
+    const newState = updateConditionOperator(state, "nonexistent", "is_not");
+    expect(newState.expression.children).toHaveLength(1);
+    const child = newState.expression.children[0];
+    expect("operator" in child && child.operator).toBe("is");
   });
 });

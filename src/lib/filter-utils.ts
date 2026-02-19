@@ -88,3 +88,21 @@ export function updateConditionValues(
     },
   };
 }
+
+export function updateConditionOperator(
+  state: FilterState,
+  conditionId: string,
+  operator: FilterOperator,
+): FilterState {
+  return {
+    expression: {
+      ...state.expression,
+      children: state.expression.children.map((child) => {
+        if (isFilterCondition(child) && child.id === conditionId) {
+          return { ...child, operator };
+        }
+        return child;
+      }),
+    },
+  };
+}

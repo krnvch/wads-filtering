@@ -12,6 +12,13 @@ const statusField: FilterFieldDef = {
   values: ["Blocked", "Monitored", "Started"],
 };
 
+const endpointField: FilterFieldDef = {
+  key: "endpoints",
+  label: "Endpoint",
+  category: "Target & Context",
+  type: "text",
+};
+
 function makeCondition(
   overrides: Partial<FilterCondition> = {},
 ): FilterCondition {
@@ -34,6 +41,7 @@ describe("FilterChip", () => {
         fieldDef={statusField}
         onRemove={vi.fn()}
         onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
       />,
     );
 
@@ -50,6 +58,7 @@ describe("FilterChip", () => {
         fieldDef={statusField}
         onRemove={vi.fn()}
         onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
       />,
     );
 
@@ -64,6 +73,7 @@ describe("FilterChip", () => {
         fieldDef={statusField}
         onRemove={vi.fn()}
         onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
       />,
     );
 
@@ -80,6 +90,7 @@ describe("FilterChip", () => {
         fieldDef={statusField}
         onRemove={vi.fn()}
         onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
       />,
     );
 
@@ -99,6 +110,7 @@ describe("FilterChip", () => {
         fieldDef={statusField}
         onRemove={onRemove}
         onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
       />,
     );
 
@@ -116,6 +128,7 @@ describe("FilterChip", () => {
         fieldDef={statusField}
         onRemove={vi.fn()}
         onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
       />,
     );
 
@@ -125,5 +138,73 @@ describe("FilterChip", () => {
     expect(screen.getByLabelText("Blocked")).toBeInTheDocument();
     expect(screen.getByLabelText("Monitored")).toBeInTheDocument();
     expect(screen.getByLabelText("Started")).toBeInTheDocument();
+  });
+
+  it("opens operator dropdown when operator text is clicked", async () => {
+    const user = userEvent.setup();
+    const condition = makeCondition();
+
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Change Status operator"));
+
+    expect(screen.getByText("is not")).toBeInTheDocument();
+    expect(screen.getByText("contains")).toBeInTheDocument();
+    expect(screen.getByText("does not contain")).toBeInTheDocument();
+  });
+
+  it("calls onUpdateOperator when a different operator is selected", async () => {
+    const user = userEvent.setup();
+    const onUpdateOperator = vi.fn();
+    const condition = makeCondition();
+
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={onUpdateOperator}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Change Status operator"));
+    await user.click(screen.getByText("is not"));
+
+    expect(onUpdateOperator).toHaveBeenCalledWith("c1", "is_not");
+  });
+
+  it("renders TextValueInput for text field type", async () => {
+    const user = userEvent.setup();
+    const condition = makeCondition({
+      field: "endpoints",
+      fieldLabel: "Endpoint",
+      operator: "contains",
+      values: ["api"],
+    });
+
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={endpointField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    // Click value to open text input
+    await user.click(screen.getByLabelText("Edit Endpoint values"));
+
+    // Should show text input, not checkboxes
+    expect(screen.getByLabelText("Enter Endpoint value")).toBeInTheDocument();
   });
 });

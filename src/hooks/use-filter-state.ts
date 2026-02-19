@@ -8,6 +8,7 @@ import {
   addCondition,
   removeCondition,
   updateConditionValues,
+  updateConditionOperator,
 } from "@/lib/filter-utils";
 import type { FilterOperator } from "@/types/filters";
 
@@ -33,6 +34,13 @@ export function useFilterState(initialState?: FilterState) {
     setFilterState((prev) => updateConditionValues(prev, id, values));
   }, []);
 
+  const updateOperator = useCallback(
+    (id: string, operator: FilterOperator) => {
+      setFilterState((prev) => updateConditionOperator(prev, id, operator));
+    },
+    [],
+  );
+
   const clearAll = useCallback(() => {
     setFilterState(createEmptyState());
   }, []);
@@ -52,6 +60,7 @@ export function useFilterState(initialState?: FilterState) {
     addFilter,
     removeFilter,
     updateFilterValues,
+    updateOperator,
     clearAll,
     hasActiveFilters,
     activeFilterCount,
