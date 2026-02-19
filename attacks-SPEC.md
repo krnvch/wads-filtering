@@ -37,22 +37,39 @@ Each attack record contains the following fields:
 
 ### 1.2 FilterState
 
-Filters are stored as a flat object where each key maps to an array of selected string values:
+Filters are stored as a boolean expression tree, where each node is either a filter condition or a group of conditions joined by AND/OR:
 
 ```typescript
+// Individual filter condition
+interface FilterCondition {
+  field: string              // e.g., "status", "type", "hostname"
+  operator: FilterOperator   // "is" | "is_not" | "contains" | "does_not_contain"
+  values: string[]           // e.g., ["Monitoring", "Blocked"]
+}
+
+type FilterOperator = "is" | "is_not" | "contains" | "does_not_contain"
+
+// Boolean expression node
+interface FilterGroup {
+  connector: "AND" | "OR"
+  children: Array<FilterCondition | FilterGroup>
+}
+
+// Top-level filter state — a flat sequence of conditions/groups joined by connectors
 interface FilterState {
-  status?: string[]
-  impact?: string[]
-  type?: string[]
-  country?: string[]
-  ip?: string[]
-  cwe?: string[]
-  api_owasp?: string[]
-  response_code?: string[]  // Stored as strings, converted to numbers for comparison
+  expression: FilterGroup    // Root expression (always AND at top level)
 }
 ```
 
-**Important**: `response_code` values are stored as strings in the filter state (e.g., `["200", "401"]`) but compared against the numeric `response_code` field on each attack. The filtering logic converts filter strings to numbers before matching: `filters.response_code.map(code => parseInt(code))`.
+**Flat shorthand** (for simple cases without grouping):
+
+```typescript
+// Simple filters can still be represented as flat key-value pairs in URL params:
+// ?status=Blocked,Monitored&type=XSS&hostname=orders.example.com
+// This is equivalent to: (Status is Blocked,Monitored) AND (Type is XSS) AND (Hostname is orders.example.com)
+```
+
+**Important**: `http_status_code` values are stored as strings in the filter state (e.g., `["200", "401"]`) but compared against the numeric `response_code` field on each attack. The filtering logic converts filter strings to numbers before matching: `filters.http_status_code.map(code => parseInt(code))`.
 
 ### 1.3 AttackView (Saved View)
 
@@ -64,12 +81,11 @@ interface AttackView {
   name: string
   description?: string
   isDefault: boolean
-  filters: FilterState
+  filters: FilterState           // Boolean expression tree
   groupBy: string
   timeWindow: string
   sort: Array<{ field: string; direction: "asc" | "desc" }>
   columns: string[]
-  matchMode: "all" | "any"
   columnWidths: Record<string, number>
   columnOrder: string[]
   frozenColumns: string[]
@@ -77,6 +93,8 @@ interface AttackView {
   chartSelections?: [string, string, string]
 }
 ```
+
+> **Note**: The previous `matchMode: "all" | "any"` field is removed. Boolean logic is now expressed directly in the `FilterState` expression tree via AND/OR connectors between conditions and groups.
 
 ---
 
@@ -95,16 +113,17 @@ The header area is split into two rows:
 - **Right** (in order):
   - **Group by** button (dropdown with grouping options)
   - **Date/Time** selector (live vs static time windows)
-  - **Filter** toggle button (enabled by default, shows active filter count badge)
   - **Settings** gear button (column visibility/ordering)
 
 ### 2.2 Filter Bar
 
-Visible by default (`showFilters: true`). Renders as a single input area containing:
-- Active filter chips (e.g., "Status : IS : Blocked x")
-- Text input for searching/adding filters
-- "Match all" / "Match any" toggle
-- "Clear" button with trash icon
+Always visible. Renders as a unified input surface containing:
+- Active filter chips with inline operators (e.g., `Status is not Monitoring or Blocked`)
+- Explicit AND/OR connector tokens between chips
+- Parenthetical grouping tokens `( )` for boolean precedence
+- Search placeholder (`Search {object} ...`) for adding new filters
+- `×` clear-all button on the far right
+- Clicking empty space opens the filter palette (see §3.2)
 
 ### 2.3 Statistics Card
 
@@ -112,7 +131,7 @@ Collapsible card with header "Statistic" and a chevron toggle. When expanded, sh
 
 **Top row** (2 cells):
 - Left cell (2/3 width): Thread activity line chart (default)
-- Right cell (1/3 width): Response Codes doughnut chart (default)
+- Right cell (1/3 width): HTTP Status Codes doughnut chart (default)
 
 **Bottom row** (3 equal cells):
 - Cell 1: Top 5 Attack Types (default)
@@ -139,82 +158,193 @@ Full page view at `/attacks/[id]` with breadcrumbs ("All attacks > Attack name")
 
 ## 3. Filtering System
 
-### 3.1 Filter Attribute Groups
+### 3.1 Filter Bar — Boolean Expression Model
 
-The "Add filter" dropdown organizes attributes into groups:
+The filter bar is a single unified input surface that renders active filters as **inline chips with explicit boolean connectors** (AND/OR) and **parenthetical grouping**. This is the core interaction model.
 
-**Recent filters** (with Clock icon):
-- "Country is USA" - One-click applies `country: ["United States"]`
-- "Attack Type is XSS" - One-click applies `type: ["XSS"]`
-- "Response Code is 200, 401, 500" - One-click applies `response_code: ["200", "401", "500"]`
+**Visual structure:**
+```
+( Status is not Monitoring or Blocked | OR | Type is BOLA, XSS ) AND Country is not Italy | Search {object} ...  [×]
+  ^-- group start                       ^-- group connector      ^-- group end   ^-- top-level connector           ^-- placeholder      ^-- clear all
+```
+
+**Key principles:**
+- **No `+Filter` button** — clicking empty space in the bar opens the filter palette
+- **AND/OR are explicit tokens** between chips, not a global toggle
+- **Parentheses `( )`** group conditions for boolean precedence
+- **Top-level connector is always AND** by default
+- **OR is only allowed within parenthetical groups** (see §3.6 Validation)
+- The `×` button on the far right clears all filters
+
+### 3.2 Filter Attribute Groups (Palette)
+
+Clicking empty space in the filter bar opens a dropdown palette organized into groups:
+
+**Recent** (shows full filter expressions with highlighted values):
+- `Status is not Monitoring or Blocked` — One-click re-applies the expression
+- `Type is BOLA, XSS` — One-click applies
+- `Country is not Italy` — One-click applies
 
 **Attack characteristics**:
-- Attack Type (values: XSS, SQL Injection, BOLA Attack, Scraper Bot, Brute Force, Path Traversal)
+- Attack type (values: XSS, SQL Injection, BOLA Attack, Scraper Bot, Brute Force, Path Traversal, Command Injection, CSRF, XXE, Rate Limit Bypass, LDAP Injection, SSTI, IDOR, HTTP Response Splitting, Logic Bypass, XML Bomb, Prototype Pollution, JWT Attack, GraphQL Abuse, Mass Assignment)
 - Status (values: Blocked, Monitored, Started)
-- Response Code (values: 200, 401, 403, 404, 500)
-- IP Address (free text input)
-- Country (values: United States, Russia, China, Germany, Brazil, India, France, Japan, United Kingdom, Canada)
-- Host (free text input)
+- Blocking status (values: Active blocking, Passive monitoring, Not configured)
+- HTTP status code (values: 200, 401, 403, 404, 500)
+- Impact (values: High, Medium, Low)
 
 **Target & Context**:
 - Endpoint (free text input)
+- Hostname (free text input)
 - Parameter (free text input)
-- API Protocols (checkbox: HTTP, HTTPS, WebSocket, GraphQL, REST, SOAP, gRPC)
 
-**Volume & Activity**:
-- Requests (numeric input)
-- Sessions (numeric input)
+> **Note**: Additional fields (IP Address, Country, CWE, OWASP API, Requests, Sessions, First Detected, Last Seen) may appear in the palette based on data context or user configuration. The fields above represent the primary palette shown in the Figma designs.
 
-### 3.2 Filter Operators
+### 3.3 Filter Operators
 
-When selecting a filter attribute (non-recent), a popover opens with:
-- **Operator selection** (radio buttons): Equals, Not Equals, Contains, Starts with, Ends with, Greater than, Less than
-- **Value selection**: Checkboxes for predefined values, or text/numeric input for free-form fields
-- **Apply** button to commit the filter
+Each filter chip has an **inline operator dropdown** (click the operator text to change):
 
-### 3.3 Filter Chips
+| Operator | Label | Description |
+|----------|-------|-------------|
+| `is` | is | Exact match — value equals one of the selected values |
+| `is_not` | is not | Negation — value does NOT equal any of the selected values |
+| `contains` | contains | Substring match — value contains the text |
+| `does_not_contain` | does not contain | Negated substring — value does NOT contain the text |
 
-Active filters display as badges in the input bar in the format:
+**Operator dropdown behavior:**
+- Opens on click of the operator text within a chip
+- Shows all 4 operators with a checkmark on the currently selected one
+- Selecting a new operator immediately updates the chip (no Apply button needed)
+
+### 3.4 Filter Chips
+
+Active filters display as inline badges in the filter bar:
+
+**Chip format:**
 ```
-{Attribute Label} : IS : {value1, value2, ...} x
+Field operator Value1 or Value2
 ```
 
-- Clicking a chip reopens the edit popover for that filter
-- Clicking the X removes the filter
-- "Match all" / "Match any" toggle controls AND vs OR logic
-- "Clear" button removes all filters
+**Examples:**
+- `Status is not Monitoring or Blocked` — Status field, "is not" operator, multiple values joined with "or"
+- `Type is BOLA, XSS` — Type field, "is" operator, multiple values comma-separated
+- `Country is not Italy` — Country field, "is not" operator, single value
 
-### 3.4 Filter Application Logic
+**Chip interactions:**
+- **Click operator text** → Opens operator dropdown (is, is not, contains, does not contain)
+- **Click value text** → Opens value selection dropdown for editing
+- **Hover chip** → Shows `×` close button (overlaps adjacent badges)
+- **Click `×`** → Removes the chip
+- Values within a chip are highlighted in **blue** to distinguish from operator text
 
-Filters are applied in `filteredAttacks` using `useMemo`:
+### 3.5 Value Selection
+
+When adding a new filter or editing chip values, a dropdown appears:
+
+**For enum fields** (Status, Type, Impact, HTTP status code, Blocking status):
+```
+┌──────────────────────────────┐
+│ Monitoring                ☐  │
+│ Blocked                   ☐  │
+│ Started                   ☐  │
+├──────────────────────────────┤
+│ ⌘ ↵ to select multiple      │
+└──────────────────────────────┘
+```
+
+- Checkboxes for multi-select
+- `Cmd+Enter` to confirm multi-selection (keyboard hint shown at bottom)
+- Selecting a value immediately creates/updates the chip
+
+**For text fields** (Endpoint, Hostname, Parameter):
+- Free-text input with autocomplete suggestions from existing data
+
+### 3.6 Validation System
+
+The filter bar includes **inline validation** with real-time feedback:
+
+**OR constraint rule:**
+- OR connectors are **only allowed within parenthetical groups** `( A OR B )`
+- OR connectors at the **top level** (between ungrouped chips) are **not allowed**
+- When an invalid OR is detected:
+  1. The OR token turns **red**
+  2. A **"Not allowed"** tooltip appears on hover
+  3. An error panel appears below the bar:
+     ```
+     ⚠ Filter contain 1 issue:
+       • "OR" operator cannot be used within the actuals query
+     ```
+  4. The filter bar border turns **red** to indicate invalid state
+
+**Validation is non-blocking** — the error is shown but the UI remains interactive so users can fix it.
+
+### 3.7 Boolean Groups (Parenthetical Grouping)
+
+Users can create **boolean groups** by wrapping conditions in parentheses:
+
+```
+( Status is not Monitoring or Blocked  OR  Type is BOLA, XSS )  AND  Country is not Italy
+└──────────────── OR group ────────────────────────────────────┘       └── top-level AND ──┘
+```
+
+**Rules:**
+- Top-level connector between groups/conditions is always **AND**
+- **OR** is only valid inside parenthetical groups
+- Groups can contain 2+ conditions
+- Nesting groups inside groups is not supported (single level of grouping)
+- The opening `(` and closing `)` are rendered as subtle tokens in the bar
+
+### 3.8 Filter Application Logic
+
+Filters are applied by evaluating the boolean expression tree:
 
 ```typescript
-// Each filter type checks if values are selected, then filters attacks
-if (filters.status?.length) {
-  result = result.filter(attack => filters.status!.includes(attack.status))
+function evaluateExpression(attacks: Attack[], group: FilterGroup): Attack[] {
+  if (group.connector === "AND") {
+    // AND: intersect results of each child
+    return group.children.reduce((result, child) => {
+      if ('field' in child) {
+        return applyCondition(result, child)
+      }
+      return evaluateExpression(result, child)
+    }, attacks)
+  } else {
+    // OR: union results of each child
+    const results = group.children.map(child => {
+      if ('field' in child) {
+        return applyCondition(attacks, child)
+      }
+      return evaluateExpression(attacks, child)
+    })
+    return [...new Set(results.flat())]
+  }
 }
-if (filters.type?.length) {
-  result = result.filter(attack => filters.type!.includes(attack.type))
-}
-if (filters.country?.length) {
-  result = result.filter(attack => 
-    attack.sources.countries.some(country => filters.country!.includes(country))
-  )
-}
-if (filters.response_code?.length) {
-  // CRITICAL: Convert string filter values to numbers for comparison
-  const codes = filters.response_code!.map(code => parseInt(code))
-  result = result.filter(attack => codes.includes(attack.response_code))
+
+function applyCondition(attacks: Attack[], condition: FilterCondition): Attack[] {
+  const { field, operator, values } = condition
+  return attacks.filter(attack => {
+    const attackValue = getAttackFieldValue(attack, field)
+    switch (operator) {
+      case "is":
+        return values.includes(String(attackValue))
+      case "is_not":
+        return !values.includes(String(attackValue))
+      case "contains":
+        return values.some(v => String(attackValue).includes(v))
+      case "does_not_contain":
+        return !values.some(v => String(attackValue).includes(v))
+    }
+  })
 }
 ```
 
-### 3.5 Cross-Component Filtering
+### 3.9 Cross-Component Filtering
 
 Filters can be triggered from multiple places:
-- **Filter bar**: Primary filtering interface
-- **Statistics charts**: Clicking a bar/legend item applies a filter for that value
-- **Table context menu**: Right-click a cell value to "Filter by value" or "Exclude value"
-- **Recent filters**: One-click preset filters in the dropdown
+- **Filter bar**: Primary filtering interface (click empty space → palette)
+- **Statistics charts**: Clicking a bar/legend item adds a filter chip
+- **Table context menu**: Right-click a cell value → "Filter by value" (adds `is` chip) or "Exclude value" (adds `is not` chip)
+- **Recent filters**: One-click preset filters in the palette dropdown
+- **Command palette** (`Cmd+K`): Type filter commands
 
 ---
 
@@ -255,11 +385,11 @@ Separated by a divider at the bottom of the dropdown. When selected:
 | `sessions` | Sessions | 180px | Right-aligned numeric |
 | `sources` | Sources | 180px | Monospace IP display |
 | `endpoints` | Endpoints | 300px | Monospace, truncated with tooltip |
-| `host` | Host | 235px | Truncated with tooltip |
+| `host` | Hostname | 235px | Truncated with tooltip |
 | `parameter` | Parameter | 235px | Truncated with tooltip |
 | `country` | Country | 180px | Flag emoji + country name |
 | `status` | Status | 180px | Colored dot + status text |
-| `response_code` | Response code | 212px | Gray chip/badge styling |
+| `response_code` | HTTP status code | 212px | Gray chip/badge styling |
 | `type` | Type | 180px | Hidden by default |
 | `timeline` | First detected | 220px | ISO date formatted |
 | `lastseen` | Last seen | 180px | ISO date formatted |
@@ -295,7 +425,7 @@ Separated by a divider at the bottom of the dropdown. When selected:
 | `endpoints` | Top 5 Endpoints | Horizontal bar | `attack.endpoints` |
 | `parameters` | Top 5 Parameters | Horizontal bar | `attack.parameter` |
 | `sources` | Top 5 Sources | Horizontal bar | `attack.sources.ips` |
-| `response-codes` | Response Codes | Doughnut | `attack.response_code` |
+| `http-status-codes` | HTTP Status Codes | Doughnut | `attack.response_code` |
 | `thread-activity` | Thread activity | Line | `attack.timeline.first_seen` (hourly buckets) |
 
 ### 6.2 Horizontal Bar Charts
@@ -305,14 +435,14 @@ Separated by a divider at the bottom of the dropdown. When selected:
 - Hovering shows "Click to filter" tooltip
 - Clicking a bar applies a filter for that attribute value
 
-### 6.3 Doughnut Chart (Response Codes)
+### 6.3 Doughnut Chart (HTTP Status Codes)
 
 - Colors: Blue (#4F9EF8), Purple (#A78BFA), Orange (#FB923C), Yellow (#FBBF24), Green (#34D399)
 - Layout: Doughnut on the left, legend on the right
 - Doughnut shows percentage labels inside each segment
 - Legend format: `{colored square} {code} ({count} - {percentage}%)`  e.g., `500 (11 - 18%)`
-- **Clicking a legend item filters by that response code value** (NOT the count)
-- The filter applied is `response_code: ["{code}"]` where code is the HTTP status code
+- **Clicking a legend item filters by that HTTP status code value** (NOT the count)
+- The filter applied adds a chip: `HTTP status code is {code}`
 
 ### 6.4 Line Chart (Thread Activity)
 
@@ -364,7 +494,7 @@ When changes are detected (`hasUnsavedChanges: true`):
 
 ### 7.5 State Persisted Per View
 
-A saved view captures: filters, groupBy, timeWindow, matchMode, columnWidths, columnOrder, frozenColumns, hiddenColumns, sort, chartSelections.
+A saved view captures: filters (full boolean expression tree), groupBy, timeWindow, columnWidths, columnOrder, frozenColumns, hiddenColumns, sort, chartSelections.
 
 ---
 
@@ -443,8 +573,10 @@ The gear icon opens a dropdown with:
 
 ## 12. Key Technical Notes
 
-1. **Response code type mismatch**: The `response_code` field on `Attack` is a number, but `FilterState.response_code` stores strings. Always convert with `parseInt()` when comparing.
+1. **HTTP status code type mismatch**: The `response_code` field on `Attack` is a number, but filter state stores strings. Always convert with `parseInt()` when comparing.
 2. **Random data assignment**: `response_code`, `endpoints`, `host`, and `parameter` values are randomly assigned at data generation time using `Math.random()`. This can cause hydration mismatches in SSR. The statistics card uses `suppressHydrationWarning` or deferred rendering where needed.
-3. **Filter application order**: All filters are AND-combined by default ("Match all"). The "Match any" toggle changes to OR logic.
-4. **Chart data recalculation**: All chart data is derived from `filteredAttacks` (post-filter), so charts update in real-time as filters are applied.
-5. **Column state sync**: Column widths, order, frozen state, and visibility are synced between the table component and the parent page via props, and persisted in saved views.
+3. **Boolean expression evaluation**: Filters are evaluated as a boolean expression tree. Top-level connector is AND. OR is only valid within parenthetical groups. The expression tree is serialized to/from URL params.
+4. **OR constraint**: OR connectors at the top level are invalid and trigger inline validation errors. The UI renders the OR token in red with a "Not allowed" tooltip and an error panel below the bar.
+5. **Chart data recalculation**: All chart data is derived from `filteredAttacks` (post-filter), so charts update in real-time as filters are applied.
+6. **Column state sync**: Column widths, order, frozen state, and visibility are synced between the table component and the parent page via props, and persisted in saved views.
+7. **Filter chip close button**: The `×` on chips is only visible on hover and overlaps adjacent badges. This preserves horizontal space in the bar.

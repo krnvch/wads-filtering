@@ -134,7 +134,7 @@ These are **table stakes** — every modern filtering system must have them:
 | **Unidirectional cliff** (visual→text works, text→visual fails) | Grafana, Jira, Cloudflare | Bidirectional sync via shared URL state. Graceful degradation with warnings. |
 | **Invisible active filters** | Many early UIs | Always-visible chip bar. Never hide filter state. |
 | **No saved filters in data-heavy tools** | Stripe, PagerDuty | Views system from day one. |
-| **Unclear AND/OR** | Many multi-select UIs | "Match all" / "Match any" language. Never expose AND/OR terms in basic mode. |
+| **Unclear AND/OR** | Many multi-select UIs | Constrained OR (only in groups) with inline validation. AND is the safe default. Error messages guide correct usage. |
 | **All-or-nothing complexity** (basic dropdowns OR query language) | Jira, Splunk, CloudWatch | Five progressive layers with no cliffs between them. |
 | **Filter state lost on navigation** | Many SPAs | URL as source of truth. Filter state survives navigation. |
 | **Too many facets at once** | High-cardinality tools | Contextual facets: show only relevant values, hide zero-count options. |
@@ -226,26 +226,29 @@ free text search                # Free-text (searches name, endpoint, parameter)
 
 ---
 
-### Decision 4: Filter Logic — Match All/Any (Not AND/OR)
+### Decision 4: Filter Logic — Inline Boolean Expression with Constrained OR
 
 **Context**: How should users combine multiple filters?
 
 **Options considered**:
 1. **AND only** — All filters must match (simplest)
-2. **AND/OR toggle** — Global switch between modes
+2. **AND/OR toggle** — Global switch between modes ("Match all" / "Match any")
 3. **Per-group AND/OR** — Nested filter groups with independent logic
-4. **"Match all" / "Match any"** — User-friendly language for AND/OR
+4. **Full boolean expression** — Inline AND/OR tokens with parenthetical grouping
 
-**Decision**: **Option 4 — "Match all" / "Match any" with future Option 3**
+**Decision**: **Option 4 — Inline boolean expression with constrained OR** (updated after Figma design review)
 
 **Rationale**:
-- NNGroup research: users misunderstand "AND" and "OR" terminology
-- Linear's approach ("all filters" / "any filters") works exceptionally well
-- Within a single field, multi-select is implicitly OR (standard pattern)
-- Between fields, default is AND (most common mental model)
-- Advanced nested groups deferred to P1 (Linear-style advanced filter groups)
+- The Figma designs define AND/OR as **explicit inline tokens** between chips, not a global toggle
+- Parenthetical grouping `( A OR B ) AND C` gives users precise control over boolean logic
+- OR is **constrained to parenthetical groups only** — prevents confusing top-level OR (which research shows users misunderstand)
+- Top-level connector is always AND (most common mental model preserved)
+- Within a single field, multi-select uses "or" keyword: `Status is not Monitoring or Blocked`
+- Inline validation shows errors when OR is used incorrectly (red token + error panel)
 
-**Current spec**: The existing `attacks-SPEC.md` already implements this as `matchMode: "all" | "any"`. We keep this and extend it.
+**Previous approach**: We had planned a "Match all" / "Match any" global toggle. The Figma designs replace this with a more expressive inline model that handles the same use cases (and more) while keeping the UI explicit about what logic is applied.
+
+**Dissent**: UX Researcher noted that explicit AND/OR tokens may confuse non-technical users. **Mitigation**: (1) OR is constrained to groups only, reducing misuse; (2) inline validation with clear error messages guides users; (3) the default experience (adding chips) is always AND, which is the intuitive default.
 
 ---
 
@@ -297,138 +300,101 @@ free text search                # Free-text (searches name, endpoint, parameter)
 ### 5.1 Filter Bar Anatomy
 
 ```
-+--[ Filter Bar ]--------------------------------------------------+
-|                                                                    |
-|  [+Filter]  [Status: Blocked ×] [Type: XSS ×] [Impact: High ×]  |
-|                                                                    |
-|  [Match: all ▾]  [Clear all]              "3 filters · 28 results"|
-|                                                                    |
-+--------------------------------------------------------------------+
++--[ Filter Bar ]-----------------------------------------------------------------------------------------------+
+|                                                                                                                |
+|  ( Status is not Monitoring or Blocked  OR  Type is BOLA, XSS )  AND  Country is not Italy  Search {object}.. ×|
+|    ^chip (badge)                        ^OR  ^chip (badge)       ^AND  ^chip (badge)         ^placeholder    ^clear
+|                                                                                                                |
++----------------------------------------------------------------------------------------------------------------+
 ```
 
 **Components**:
-- **Add Filter button** (`+Filter`) — Opens filter palette popover
-- **Active filter chips** — Each shows `field: value ×`, clickable to edit, × to remove
-- **Match mode toggle** — "Match all" / "Match any" (appears after 2+ filters)
-- **Clear all** — Removes all filters
+- **Filter chips** — Inline badges showing `Field operator Value1 or Value2`, with blue-highlighted values
+- **Boolean connectors** — Explicit AND/OR tokens between chips/groups
+- **Parenthetical groups** — `( )` tokens for boolean precedence (OR only valid inside groups)
+- **Search placeholder** — `Search {object} ...` — clicking opens filter palette
+- **Clear all** (`×`) — Button on far right, removes all filters
 - **Result count** — Live count of matching records (with `aria-live="polite"`)
 
-### 5.2 Filter Palette (Add Filter Popover)
+**No `+Filter` button** — the filter palette opens when clicking empty space in the bar. This is simpler than a dedicated button and matches the Figma design.
 
-When user clicks `+Filter` or presses `F`:
+### 5.2 Filter Palette (Click Empty Bar Space)
+
+When user clicks empty space in the filter bar or presses `F`:
 
 ```
 +--[ Filter Palette ]----------------------------------+
-| Search filters...                             [?]    |
-+------------------------------------------------------+
 |                                                      |
-| RECENT FILTERS                              (clock)  |
-|   Status is Blocked                                  |
-|   Type is XSS                                        |
-|   Response Code is 200, 401, 500                     |
+| RECENT                                               |
+|   Status is not Monitoring or Blocked                |
+|   Type is BOLA, XSS                                 |
+|   Country is not Italy                               |
 |                                                      |
 | ATTACK CHARACTERISTICS                               |
-|   Attack Type                              (6 types) |
-|   Status                                (3 statuses) |
-|   Impact                                 (3 levels)  |
-|   Response Code                           (5 codes)  |
+|   Attack type                                        |
+|   Status                                             |
+|   Blocking status                                    |
+|   HTTP status code                                   |
+|   Impact                                             |
 |                                                      |
-| SOURCE & TARGET                                      |
-|   IP Address                               (text)    |
-|   Country                              (10 values)   |
-|   Host                                     (text)    |
-|   Endpoint                                 (text)    |
-|                                                      |
-| SECURITY                                             |
-|   CWE                                    (N values)  |
-|   OWASP API                              (N values)  |
-|                                                      |
-| VOLUME & TIME                                        |
-|   Requests                               (numeric)   |
-|   Sessions                               (numeric)   |
-|   First Detected                           (date)    |
-|   Last Seen                                (date)    |
+| TARGET & CONTEXT                                     |
+|   Endpoint                                           |
+|   Hostname                                           |
+|   Parameter                                          |
 +------------------------------------------------------+
 ```
 
-**Implementation**: shadcn/ui `Popover` + `Command` (cmdk). Type-ahead search filters categories. Arrow keys navigate. Enter selects.
+**Key differences from initial spec (aligned with Figma):**
+- **No search input** at top — palette is a simple categorized list
+- **Recent filters show full expressions** with blue-highlighted values (not just field names)
+- **Clicking a recent filter** re-applies the entire expression (one-click)
+- **Clicking a field** opens the value selection step (operator + values)
+- **Fewer fields** in primary palette (~8 fields); additional fields may be available via search or configuration
+- **Renamed fields**: Host → Hostname, Response Code → HTTP status code
+- **New field**: Blocking status
+
+**Implementation**: shadcn/ui `Popover` + `Command` (cmdk). Arrow keys navigate. Enter selects.
 
 ### 5.3 Filter Value Selection
 
-After selecting a filter category, a secondary popover shows:
+After selecting a field from the palette, a chip is created in the bar with the default operator (`is`), and a value dropdown opens inline:
 
-**For enum fields** (Status, Impact, Type):
+**For enum fields** (Status, Type, Impact, HTTP status code, Blocking status):
 ```
-+--[ Status Filter ]---------------------------+
-| Operator: [is ▾]                             |
-+----------------------------------------------+
-| Search values...                             |
-|                                              |
-| ☑ Blocked                              (15) |
-| ☐ Monitored                            (10) |
-| ☐ Started                               (3) |
-+----------------------------------------------+
-| [Apply]                                      |
-+----------------------------------------------+
++--[ Value Dropdown ]----------------------+
+| Monitoring                            ☐  |
+| Blocked                               ☐  |
+| Started                               ☐  |
++-------------------------------------------+
+| ⌘ ↵ to select multiple                   |
++-------------------------------------------+
 ```
 
-**For text fields** (IP, Host, Endpoint):
+- Checkboxes for multi-select
+- `Cmd+Enter` keyboard hint shown at bottom
+- No "Apply" button — selection is immediate
+- No search input or live counts in the value list (simpler than initial spec)
+
+**For text fields** (Endpoint, Hostname, Parameter):
+- Free-text input with autocomplete suggestions from existing data
+
+**Operator selection** happens inline on the chip itself — click the operator text (`is`, `is not`, etc.) to open a dropdown with 4 options:
 ```
-+--[ IP Address Filter ]------------------------+
-| Operator: [contains ▾]                        |
-+-----------------------------------------------+
-| Enter IP address...                           |
-| ┌──────────────────────────────┐              |
-| │ 192.168.1.                   │              |
-| └──────────────────────────────┘              |
-+-----------------------------------------------+
-| [Apply]                                       |
-+-----------------------------------------------+
++--[ Operator Dropdown ]---+
+| is                       |
+| is not              ✓    |
+| contains                 |
+| does not contain         |
++---------------------------+
 ```
 
-**For numeric fields** (Requests, Sessions):
-```
-+--[ Requests Filter ]-------------------------+
-| Operator: [greater than ▾]                   |
-+----------------------------------------------+
-| Value: [100          ]                       |
-+----------------------------------------------+
-| [Apply]                                      |
-+----------------------------------------------+
-```
+### 5.4 Query Input Mode (P1 — Future Enhancement)
 
-**For date fields** (First Detected, Last Seen):
-```
-+--[ Last Seen Filter ]------------------------+
-| Operator: [after ▾]                          |
-+----------------------------------------------+
-| [Calendar picker or relative: "7 days ago"]  |
-+----------------------------------------------+
-| [Apply]                                      |
-+----------------------------------------------+
-```
+> **Note**: The Figma designs focus on the chip-based interaction model. Typed `field:value` query syntax is a P1 enhancement that builds on top of the chip model.
 
-### 5.4 Query Input Mode
+When typing in the `Search {object} ...` area, the palette opens showing matching fields. Selecting a field creates a chip with value selection. Full typed query syntax (`status:Blocked type:XSS`) may be added in P1 to support power users who prefer typing over clicking.
 
-The filter bar also accepts typed queries. When the user starts typing in the bar:
-
-```
-+--[ Filter Bar — Query Mode ]------------------------------------------+
-|                                                                        |
-|  status:Blocked type:XSS impact:High|                                  |
-|  ^^^^^^^^^^^^^^ ^^^^^^^^^ ^^^^^^^^^^^                                  |
-|  (blue)        (blue)    (blue)     <- syntax highlighting            |
-|                                                                        |
-|  Suggestions:                                                          |
-|  ┌─────────────────────────────────────────┐                          |
-|  │ impact:High     Impact is High     (12) │  <- autocomplete         |
-|  │ impact:Medium   Impact is Medium    (8) │                          |
-|  │ impact:Low      Impact is Low       (8) │                          |
-|  └─────────────────────────────────────────┘                          |
-+------------------------------------------------------------------------+
-```
-
-Typed queries are parsed into chips on `Enter` or `Space` after a complete `field:value` token. This is the GitHub/Sentry model.
+The chip-based model with inline operators IS the primary interaction — not a secondary mode.
 
 ### 5.5 Cross-Component Filtering
 
@@ -436,14 +402,13 @@ Filters can be triggered from multiple surfaces (matching existing spec):
 
 | Source | Action | Result |
 |--------|--------|--------|
-| **Filter bar** | Click +Filter, select field, select value | Chip added to bar |
-| **Query typing** | Type `field:value` in bar | Chip parsed and added |
-| **Chart click** | Click bar/legend in statistics charts | Filter chip added for that value |
-| **Table context menu** | Right-click cell → "Filter by value" | Filter chip added |
-| **Table context menu** | Right-click cell → "Exclude value" | Negated filter chip added |
-| **Recent filters** | Click preset in filter palette | Filter applied instantly |
+| **Filter bar** | Click empty space → select field → select values | Chip added to bar with AND connector |
+| **Chart click** | Click bar/legend in statistics charts | Filter chip added with `is` operator |
+| **Table context menu** | Right-click cell → "Filter by value" | `Field is Value` chip added |
+| **Table context menu** | Right-click cell → "Exclude value" | `Field is not Value` chip added |
+| **Recent filters** | Click preset in filter palette | Full expression re-applied |
 | **Command palette** | Type filter command | Filter applied |
-| **Saved view** | Click view tab | Full filter state loaded |
+| **Saved view** | Click view tab | Full expression tree loaded |
 
 ---
 
@@ -573,130 +538,154 @@ Announcements debounced at 500ms to prevent storms during rapid filter changes.
 ### 8.1 State Model
 
 ```typescript
-// URL State (source of truth, shareable)
-interface FilterURLState {
-  // Filter values
-  status?: string[]        // e.g., ["Blocked", "Monitored"]
-  impact?: string[]        // e.g., ["High"]
-  type?: string[]          // e.g., ["XSS", "SQL Injection"]
-  country?: string[]       // e.g., ["United States"]
-  ip?: string[]            // e.g., ["192.168.1.1"]
-  cwe?: string[]           // e.g., ["CWE-79"]
-  api_owasp?: string[]     // e.g., ["API1:2021"]
-  response_code?: string[] // e.g., ["200", "401"]
-  host?: string[]
-  endpoint?: string[]
-  parameter?: string[]
+// ─── Filter Expression Model (boolean expression tree) ───
 
-  // Operators (when non-default)
-  // Encoded as field__op, e.g., requests__gt=100
-  [key: `${string}__${'eq'|'neq'|'gt'|'lt'|'gte'|'lte'|'contains'|'starts'|'ends'}`]: string
-
-  // Meta
-  match?: 'all' | 'any'   // Default: 'all'
-  q?: string               // Free-text search query
-
-  // View & display
-  view?: string            // Saved view ID
-  sort?: string            // e.g., "timeline.last_seen:desc"
-  groupBy?: string         // e.g., "type"
-  timeWindow?: string      // e.g., "live-7d"
+// Individual filter condition (renders as a chip in the bar)
+interface FilterCondition {
+  id: string
+  field: string              // e.g., "status", "type", "hostname"
+  fieldLabel: string         // e.g., "Status", "Attack type", "Hostname"
+  operator: FilterOperator   // e.g., "is", "is_not"
+  values: string[]           // e.g., ["Monitoring", "Blocked"]
 }
 
-// Client State (Zustand — ephemeral UI state)
+type FilterOperator = "is" | "is_not" | "contains" | "does_not_contain"
+
+// Boolean group — wraps conditions with a connector
+interface FilterGroup {
+  id: string
+  connector: "AND" | "OR"
+  children: Array<FilterCondition | FilterGroup>
+}
+
+// Top-level filter state — root group (always AND at top level)
+interface FilterState {
+  expression: FilterGroup    // Root is always { connector: "AND", children: [...] }
+}
+
+// ─── URL State (source of truth, shareable) ───
+
+// The expression tree is serialized to a compact URL format:
+// ?filter=((status.is_not.Monitoring,Blocked|OR|type.is.BOLA,XSS)|AND|country.is_not.Italy)
+// Flat shorthand for simple AND-only queries:
+// ?status=Blocked,Monitored&type=XSS&hostname=orders.example.com
+interface FilterURLState {
+  filter?: string            // Serialized expression tree (for complex boolean queries)
+
+  // Flat shorthand (for simple queries — auto-promoted to expression tree)
+  status?: string[]
+  impact?: string[]
+  type?: string[]
+  hostname?: string[]
+  endpoint?: string[]
+  parameter?: string[]
+  http_status_code?: string[]
+  blocking_status?: string[]
+
+  // View & display
+  view?: string              // Saved view ID
+  sort?: string              // e.g., "timeline.last_seen:desc"
+  groupBy?: string           // e.g., "type"
+  timeWindow?: string        // e.g., "live-7d"
+  q?: string                 // Free-text search
+}
+
+// ─── Client State (Zustand — ephemeral UI state) ───
+
 interface FilterUIState {
   isPaletteOpen: boolean
   editingChipId: string | null
-  queryInputValue: string   // Draft query text before parsing
+  editingOperatorChipId: string | null  // Which chip's operator dropdown is open
+  hoveredChipId: string | null          // For showing × on hover
+  validationErrors: FilterValidationError[]
   filterHistory: FilterHistoryEntry[]
   historyIndex: number
 }
 
-// Filter chip display model
-interface FilterChip {
-  id: string
-  field: string            // e.g., "status"
-  fieldLabel: string       // e.g., "Status"
-  operator: FilterOperator // e.g., "is"
-  values: string[]         // e.g., ["Blocked", "Monitored"]
-  negated: boolean
+interface FilterValidationError {
+  type: "invalid_or_placement"
+  message: string            // e.g., '"OR" operator cannot be used within the actuals query'
+  tokenId: string            // ID of the problematic connector token
 }
-
-type FilterOperator =
-  | 'is' | 'is_not'
-  | 'contains' | 'not_contains'
-  | 'starts_with' | 'ends_with'
-  | 'gt' | 'lt' | 'gte' | 'lte'
-  | 'before' | 'after'
 ```
 
 ### 8.2 Component Tree
 
 ```
 FilterSystem/
-├── FilterBar                    # Main container (role="search")
-│   ├── FilterPaletteTrigger     # +Filter button → opens palette
-│   ├── FilterChipGroup          # Active filter chips (role="group")
-│   │   └── FilterChip[]         # Individual removable chips (Badge)
-│   ├── QueryInput               # Typed query input with syntax highlighting
-│   ├── MatchModeToggle          # "Match all" / "Match any" (ToggleGroup)
-│   ├── ClearAllButton           # Clear all filters (Button ghost)
-│   └── ResultCount              # "N results" (aria-live region)
-├── FilterPalette                # Popover + Command for filter discovery
-│   ├── RecentFilters            # Clock icon section
-│   ├── FilterCategoryGroups     # Organized filter categories
-│   └── FilterValueSelector      # Secondary popover per field type
-│       ├── EnumValueSelector    # Checkbox list + search (Combobox)
-│       ├── TextValueInput       # Free-text input
-│       ├── NumericValueInput    # Number input + operator
-│       └── DateValuePicker      # Calendar + relative options
-├── CommandPaletteIntegration    # Cmd+K filter commands
-├── FilterQueryParser            # Parses query text → FilterChip[]
-└── FilterURLSync                # Bidirectional URL ↔ state sync
+├── FilterBar                        # Main container (role="search")
+│   ├── FilterExpression             # Renders the boolean expression tree
+│   │   ├── FilterGroup              # Parenthetical group ( ... )
+│   │   │   ├── GroupOpenParen       # ( token
+│   │   │   ├── FilterChip[]         # Individual filter badges
+│   │   │   ├── BooleanConnector[]   # AND/OR tokens between chips
+│   │   │   └── GroupCloseParen      # ) token
+│   │   ├── FilterChip               # Field operator Value1 or Value2 (Badge)
+│   │   │   ├── ChipOperator         # Clickable "is"/"is not" → opens OperatorDropdown
+│   │   │   ├── ChipValues           # Blue-highlighted values
+│   │   │   └── ChipClose            # × button (visible on hover only)
+│   │   └── BooleanConnector         # AND/OR token between top-level items
+│   ├── SearchPlaceholder            # "Search {object} ..." — click opens palette
+│   ├── ClearAllButton               # × on far right
+│   └── ValidationPanel              # Error panel below bar (when validation fails)
+├── FilterPalette                    # Dropdown opened by clicking empty bar space
+│   ├── RecentFilters                # Full expressions with blue-highlighted values
+│   └── FilterCategoryGroups         # Attack characteristics, Target & Context
+├── OperatorDropdown                 # is, is not, contains, does not contain
+├── ValueSelector                    # Dropdown per field type
+│   ├── EnumValueSelector            # Checkbox list + ⌘↵ hint
+│   └── TextValueInput               # Free-text input with autocomplete
+├── CommandPaletteIntegration        # Cmd+K filter commands
+├── FilterExpressionParser           # Parses/validates boolean expression tree
+└── FilterURLSync                    # Bidirectional URL ↔ expression tree sync
 ```
 
 ### 8.3 shadcn/ui Components Required
 
 | Component | Usage |
 |-----------|-------|
-| `Button` | +Filter trigger, Clear all, Apply |
-| `Badge` | Filter chips (custom variant with close button) |
-| `Popover` | Filter palette, value selectors |
-| `Command` (cmdk) | Filter palette search, command palette |
-| `ToggleGroup` + `Toggle` | Match mode, quick filter toggles |
-| `Input` | Text value inputs, numeric inputs |
-| `Calendar` | Date filter picker |
-| `Select` | Operator selection |
-| `Tooltip` | Filter field descriptions, keyboard shortcuts |
+| `Badge` | Filter chips (custom variant with hover-only close button, blue value text) |
+| `Popover` | Filter palette, value selectors, operator dropdown |
+| `Command` (cmdk) | Filter palette categories, command palette |
+| `DropdownMenu` | Operator selection (is, is not, contains, does not contain), view actions |
+| `Checkbox` | Multi-select values in enum dropdowns |
+| `Input` | Text value inputs, search placeholder |
+| `Button` | Clear all (×), apply actions |
+| `Tooltip` | "Not allowed" on invalid OR, field descriptions, keyboard shortcuts |
 | `Skeleton` | Loading states |
-| `Card` | Filter bar container (optional) |
+| `Alert` | Validation error panel below filter bar |
 | `Sonner` (toast) | Undo notifications |
 | `Dialog` | Save view modal |
-| `Sheet` | Mobile filter sheet, advanced filter builder |
-| `DropdownMenu` | View management actions |
-| `Slider` | Numeric range filters |
+| `Sheet` | Mobile filter sheet |
 
-### 8.4 Query Parser Architecture
+### 8.4 Expression Tree & Validation Architecture
 
-The query parser should handle the `field:value` syntax:
+The filter system uses a **boolean expression tree** (not a text query parser). The tree is built interactively via chip creation and grouping.
 
+**Expression tree example:**
 ```
-Input: 'status:Blocked type:XSS !impact:Low response_code:[200,401] free text search'
-
-Tokens:
-  { type: 'filter', field: 'status', operator: 'is', values: ['Blocked'], negated: false }
-  { type: 'filter', field: 'type', operator: 'is', values: ['XSS'], negated: false }
-  { type: 'filter', field: 'impact', operator: 'is', values: ['Low'], negated: true }
-  { type: 'filter', field: 'response_code', operator: 'is', values: ['200', '401'], negated: false }
-  { type: 'freetext', value: 'free text search' }
+FilterGroup (AND)
+├── FilterGroup (OR)                              ← parenthetical group
+│   ├── FilterCondition { field: "status", operator: "is_not", values: ["Monitoring", "Blocked"] }
+│   └── FilterCondition { field: "type", operator: "is", values: ["BOLA", "XSS"] }
+└── FilterCondition { field: "country", operator: "is_not", values: ["Italy"] }
 ```
 
-Parser phases:
-1. **Tokenization** — Split input into tokens (field:value pairs + free text)
-2. **Validation** — Check field names against schema, validate operators
-3. **AST construction** — Build a typed filter tree
-4. **Serialization** — Convert AST to URL params (for state sync)
-5. **Deserialization** — Convert URL params back to AST (for hydration)
+**Renders as:**
+```
+( Status is not Monitoring or Blocked  OR  Type is BOLA, XSS )  AND  Country is not Italy
+```
+
+**Validation rules:**
+1. **OR placement** — OR connectors are only valid inside parenthetical groups. Top-level OR triggers an error.
+2. **Empty values** — A chip without values is invalid (shown with warning state).
+3. **Single-level nesting** — Groups cannot be nested inside groups.
+
+**Serialization phases:**
+1. **Tree → URL** — Serialize expression tree to compact URL param format
+2. **URL → Tree** — Deserialize URL params back to expression tree on page load
+3. **Tree → Display** — Render tree as inline chips with connectors and parens
+4. **Validation** — Run constraint checks on every tree mutation, update `validationErrors` in UI state
 
 ---
 
@@ -710,9 +699,9 @@ Parser phases:
 
 ### Interaction Designer Pushback
 
-> "The query parser is a significant technical risk. Sentry spent months building their `SearchQueryBuilder` and still had to add a plain-text toggle because power users found the tokenized UI too restrictive. My concern: if we build a tokenized chip system, users who prefer typing `status:Blocked AND type:XSS` will find the chip insertion/editing flow slower than just typing. I recommend we follow Sentry's lead and support BOTH tokenized (click-based) AND plain text (typing) modes from the start."
+> "The boolean expression model with inline AND/OR and parenthetical grouping is more complex than a simple 'Match all/any' toggle. Users need to understand what parentheses mean. My concern: if we expose `( A OR B ) AND C` syntax, non-technical users may be confused by the grouping. I recommend we auto-create groups when users add OR between chips, rather than requiring manual parenthesis placement."
 
-**Response (Frontend Engineer 1)**: Agreed. We'll implement dual mode — tokenized chips by default, with a toggle to switch to plain text query mode. The URL params remain the source of truth for both modes. This matches Sentry's September 2024 approach.
+**Response (Frontend Engineer 1)**: Agreed. The OR constraint (only allowed in groups) naturally guides users — if they try to add OR at the top level, the validation error tells them it's not allowed. We'll provide a one-click "Group these filters" action to wrap selected chips in parentheses. The typed `field:value` query syntax is deferred to P1.
 
 ### Backend Engineer 1 Challenge
 
@@ -732,9 +721,9 @@ Parser phases:
 
 ### Product Designer Observation
 
-> "Looking across all reference products, there's a clear visual design tension: **Linear's minimal formula approach** (no colored pills, just text) vs. **Kibana's rich pill approach** (colored, individually controllable). For a security dashboard, I recommend the Kibana-style rich pills because: (a) security contexts benefit from visual prominence of active filters — users need to know exactly what they're looking at, (b) individual pill operations (disable, pin, negate) are extremely useful for security triage workflows, (c) the existing spec already uses badge-style chips."
+> "The Figma designs establish a clear visual language: chips with **blue-highlighted values** and inline operator text, where the operator is clickable for editing. The `×` close button is hover-only to save horizontal space — it overlaps adjacent badges. AND/OR connectors are plain text tokens between chips, and parentheses are subtle tokens. This is closer to Sentry's SearchQueryBuilder than Linear's minimal approach, but cleaner — the validation system (red OR tokens, error panel) prevents users from creating invalid expressions."
 
-**Response (Team)**: Agreed. We'll use the rich pill/badge approach with individual controls per chip, consistent with the existing spec's badge-based design.
+**Response (Team)**: The Figma design is the definitive reference. The visual model is: chips with blue values, inline operators, explicit AND/OR tokens, parenthetical grouping, and non-blocking inline validation.
 
 ---
 
@@ -744,47 +733,47 @@ Parser phases:
 
 | Feature | Description | Complexity |
 |---------|-------------|------------|
-| Filter bar with chips | Add/remove/edit filter chips, clear all | Medium |
-| Filter palette | Organized category menu with search | Medium |
-| Enum value selector | Multi-select combobox for enum fields (Status, Type, Impact, etc.) | Medium |
-| Text value input | Free-text input for IP, Host, Endpoint, Parameter | Low |
-| Match all/any toggle | Global AND/OR toggle | Low |
-| URL state sync | Bidirectional URL ↔ filter state | Medium |
+| Filter bar with chips | Inline chips with `Field operator Value` format, blue-highlighted values | Medium |
+| Boolean expression model | Explicit AND/OR tokens between chips, parenthetical grouping | High |
+| Inline operator dropdown | Click operator text on chip → is/is not/contains/does not contain | Medium |
+| Filter palette | Categorized field list with recent expressions (click empty bar) | Medium |
+| Enum value selector | Checkbox multi-select with `Cmd+Enter` hint | Medium |
+| Text value input | Free-text input for Endpoint, Hostname, Parameter | Low |
+| Inline validation | OR constraint checks, red tokens, error panel below bar | Medium |
+| URL state sync | Bidirectional URL ↔ expression tree | High |
+| Hover-only chip close | `×` appears on hover, overlaps adjacent badges | Low |
 | Basic keyboard nav | Tab through chips, Escape to close, Enter to activate | Medium |
-| Chart-click filtering | Click statistics chart elements to apply filters | Low (existing) |
-| Table context menu filtering | Right-click → Filter by value / Exclude | Low (existing) |
-| Recent filters | Show recently applied filter combinations | Low |
-| Result count (live) | Show filtered result count with live announcements | Low |
-| Clear all | Remove all active filters | Low |
+| Chart-click filtering | Click statistics chart elements to add filter chip | Low (existing) |
+| Table context menu filtering | Right-click → "Filter by value" (is) / "Exclude value" (is not) | Low (existing) |
+| Recent filters | Full expression presets with highlighted values | Low |
+| Clear all | `×` button on far right removes all filters | Low |
 
 ### P1 — Should Ship (Power Features)
 
 | Feature | Description | Complexity |
 |---------|-------------|------------|
-| Query input mode | Typed `field:value` syntax with parsing | High |
+| Query input mode | Typed `field:value` syntax with parsing into chips | High |
 | Autocomplete/suggestions | Field names, operators, values with counts | High |
-| Syntax highlighting | Color-coded query tokens in input | Medium |
 | Command palette integration | `Cmd+K` filter commands | Medium |
-| `F` keyboard shortcut | Single-key filter activation | Low |
-| Negation filters | `!field:value` for exclusion | Medium |
-| Numeric operators | Greater than, less than, range for Requests/Sessions | Medium |
-| Date operators | Before, after, range for First Detected/Last Seen | Medium |
+| `F` keyboard shortcut | Single-key filter palette activation | Low |
 | Undo/redo | `Cmd+Z` / `Cmd+Shift+Z` for filter history | Medium |
 | Saved views (full) | Create, name, share, duplicate, delete views | High |
 | View presets | Built-in views (All, Blocked Today, Needs Attention, etc.) | Medium |
-| Dual mode toggle | Switch between tokenized chips and plain text query | Medium |
+| Result count (live) | Show filtered result count with live announcements | Low |
+| Additional filter fields | IP Address, Country, CWE, OWASP API, Requests, Sessions, dates | Medium |
 
 ### P2 — Nice to Have (Advanced)
 
 | Feature | Description | Complexity |
 |---------|-------------|------------|
-| Advanced filter groups | Nested AND/OR groups (Linear-style) | High |
+| Nested group nesting | Groups inside groups (multi-level boolean) | High |
 | AI/NLQ filtering | Natural language → structured filter | High |
 | Dynamic facet counts | Show matching count per value in palette | Medium |
 | Filter suggestions | "People also filter by..." context suggestions | Medium |
 | Mobile bottom sheet | Responsive filter builder for mobile | Medium |
 | Pinned/disabled filters | Kibana-style individual filter controls | Medium |
 | Cross-view filter comparison | Compare two views side by side | High |
+| Dual mode toggle | Switch between tokenized chips and plain text query | Medium |
 
 ---
 
@@ -796,20 +785,26 @@ Parser phases:
 
 2. **Server-side vs client-side filtering**: The current spec uses client-side filtering with `useMemo`. At what data volume do we need server-side filtering? (Risk: performance with >10K records.)
 
-3. **Filter operator defaults**: Should we show operators by default or only when the user explicitly changes them? (Recommendation: Hide by default, show when user clicks operator area — Linear pattern.)
+3. **Group creation UX**: How does a user create a new parenthetical group? Options: (a) drag chips into a group, (b) select chips + "Group" action, (c) auto-group when OR is placed between chips. Figma shows the end state but not the creation flow.
 
-4. **Real-time autocomplete data source**: Should autocomplete values come from a static schema or from actual data? (Recommendation: Start with static schema for enum fields, actual data for text fields — Vercel pattern.)
+4. **OR constraint rationale**: The Figma shows "OR cannot be used within the actuals query" — what exactly constitutes "actuals query"? Is this a backend constraint (API limitation) or a UX choice? Need to clarify the exact rules.
+
+5. **Missing fields**: The Figma palette shows ~8 fields, but the data model has 16+. Are IP, Country, CWE, OWASP API, Requests, Sessions, First/Last Detected intentionally excluded from the primary palette, or are they accessible via search/scroll?
+
+6. **`Search {object}` placeholder**: Does the placeholder text adapt to context (e.g., "Search attacks..." vs "Search sessions...")? Or is `{object}` a literal template to be replaced?
 
 ### Risks
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Query parser complexity | High | Medium | Use a proven tokenizer library (e.g., Chevrotain). Budget 2x estimated time. |
-| Bidirectional sync bugs | High | High | URL-as-source-of-truth reduces sync issues. Extensive E2E tests. |
+| Boolean expression tree complexity | High | Medium | Keep to single-level grouping (no nesting). Thorough unit tests for evaluation logic. |
+| Expression ↔ URL serialization bugs | High | High | URL-as-source-of-truth. Round-trip tests for every expression shape. |
+| OR constraint confusion | Medium | Medium | Inline validation with clear error messages. "Not allowed" tooltip. Auto-suggest grouping. |
 | Keyboard shortcut conflicts | Medium | Medium | Context detection (input focused vs body focused). Test across OS/browsers. |
-| Performance with many active filters | Medium | Low | Debounce filter application. Memoize filter computations. |
+| Performance with many active filters | Medium | Low | Debounce filter application. Memoize expression evaluation. |
 | Accessibility regressions | High | Medium | Automated axe-core in CI. Manual screen reader testing per sprint. |
 | Scope creep from "one more filter feature" | High | High | Strict P0/P1/P2 prioritization. PM gates all additions. |
+| Group creation UX unclear | Medium | Medium | Figma shows end state but not creation flow. Need design iteration on how users create groups. |
 
 ---
 
