@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useFilterUrlState } from "../use-filter-url-state";
-import { isFilterCondition } from "@/types/filters";
+import { isFilterCondition, isFilterGroup } from "@/types/filters";
 
 // Mock next/navigation
 const mockPush = vi.fn();
@@ -130,5 +130,80 @@ describe("useFilterUrlState", () => {
     const pushedUrl = mockPush.mock.calls[0][0];
     expect(pushedUrl).toContain("status=Blocked");
     expect(pushedUrl).toContain("status__op=is_not");
+  });
+
+  it("toggleConnector pushes URL with group params", () => {
+    mockSearchParams = new URLSearchParams("status=Blocked&type=XSS");
+
+    const { result } = renderHook(() => useFilterUrlState());
+
+    act(() => {
+      result.current.toggleConnector(0);
+    });
+
+    const pushedUrl = mockPush.mock.calls[0][0];
+    expect(pushedUrl).toContain("g1.");
+    expect(pushedUrl).toContain("g1__op=OR");
+  });
+
+  it("derives group state from URL with group params", () => {
+    mockSearchParams = new URLSearchParams(
+      "g1.status=Blocked&g1.type=XSS&g1__op=OR",
+    );
+
+    const { result } = renderHook(() => useFilterUrlState());
+
+    expect(result.current.filterState.expression.children).toHaveLength(1);
+    const group = result.current.filterState.expression.children[0];
+    expect(isFilterGroup(group)).toBe(true);
+    if (isFilterGroup(group)) {
+      expect(group.connector).toBe("OR");
+      expect(group.children).toHaveLength(2);
+    }
+  });
+
+  it("validationErrors returns empty for valid URL state", () => {
+    mockSearchParams = new URLSearchParams("status=Blocked");
+
+    const { result } = renderHook(() => useFilterUrlState());
+    expect(result.current.validationErrors).toEqual([]);
+  });
+
+  it("validationErrors detects issues after sanitization", () => {
+    // After sanitization, the result should be valid
+    // (sanitizeExpression is called during deserialization)
+    mockSearchParams = new URLSearchParams(
+      "g1.status=Blocked&g1.type=XSS&g1__op=OR",
+    );
+
+    const { result } = renderHook(() => useFilterUrlState());
+    expect(result.current.validationErrors).toEqual([]);
+  });
+
+  it("removeFilter works for conditions inside groups via URL state", () => {
+    mockSearchParams = new URLSearchParams(
+      "g1.status=Blocked&g1.type=XSS&g1__op=OR&impact=High",
+    );
+
+    const { result } = renderHook(() => useFilterUrlState());
+
+    // Find the status condition inside the group
+    const group = result.current.filterState.expression.children.find(isFilterGroup);
+    expect(group).toBeDefined();
+
+    if (group && isFilterGroup(group)) {
+      const statusCondition = group.children.find(
+        (c) => isFilterCondition(c) && c.field === "status",
+      );
+      expect(statusCondition).toBeDefined();
+
+      act(() => {
+        if (statusCondition && "id" in statusCondition) {
+          result.current.removeFilter(statusCondition.id);
+        }
+      });
+
+      expect(mockPush).toHaveBeenCalled();
+    }
   });
 });
