@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FilterChip } from "./FilterChip";
 import { FilterPalette } from "./FilterPalette";
+import { FilterAnnouncer } from "./FilterAnnouncer";
 import { EnumValueSelector } from "./EnumValueSelector";
 import { TextValueInput } from "./TextValueInput";
 import { BooleanConnector } from "./BooleanConnector";
 import { FilterGroupComponent } from "./FilterGroupComponent";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useFilterFocus } from "@/hooks/use-filter-focus";
 import { isFilterCondition, isFilterGroup } from "@/types/filters";
 import type {
   FilterState,
@@ -34,6 +37,7 @@ interface FilterBarProps {
   onToggleConnector?: (leftIndex: number) => void;
   validationErrors?: ValidationError[];
   textSuggestions?: Record<string, string[]>;
+  resultCount?: number;
   placeholder?: string;
   className?: string;
 }
@@ -48,6 +52,7 @@ export function FilterBar({
   onToggleConnector,
   validationErrors,
   textSuggestions,
+  resultCount,
   placeholder = "Filter...",
   className,
 }: FilterBarProps) {
@@ -59,6 +64,9 @@ export function FilterBar({
   const hasFilters = children.length > 0;
   const hasErrors = validationErrors && validationErrors.length > 0;
 
+  const { focusAfterRemove, focusAfterAdd, focusAfterClearAll } =
+    useFilterFocus();
+
   const handleSelectField = useCallback((field: FilterFieldDef) => {
     setPaletteOpen(false);
     setPendingField(field);
@@ -69,10 +77,11 @@ export function FilterBar({
     if (pendingField && pendingValues.length > 0) {
       const defaultOp = pendingField.type === "text" ? "contains" : "is";
       onAddFilter(pendingField.key, pendingValues, defaultOp);
+      focusAfterAdd();
     }
     setPendingField(null);
     setPendingValues([]);
-  }, [pendingField, pendingValues, onAddFilter]);
+  }, [pendingField, pendingValues, onAddFilter, focusAfterAdd]);
 
   const handlePendingOpenChange = useCallback(
     (open: boolean) => {
@@ -80,13 +89,27 @@ export function FilterBar({
         if (pendingField && pendingValues.length > 0) {
           const defaultOp = pendingField.type === "text" ? "contains" : "is";
           onAddFilter(pendingField.key, pendingValues, defaultOp);
+          focusAfterAdd();
         }
         setPendingField(null);
         setPendingValues([]);
       }
     },
-    [pendingField, pendingValues, onAddFilter],
+    [pendingField, pendingValues, onAddFilter, focusAfterAdd],
   );
+
+  const handleRemoveFilter = useCallback(
+    (id: string) => {
+      focusAfterRemove(id);
+      onRemoveFilter(id);
+    },
+    [onRemoveFilter, focusAfterRemove],
+  );
+
+  const handleClearAll = useCallback(() => {
+    onClearAll();
+    focusAfterClearAll();
+  }, [onClearAll, focusAfterClearAll]);
 
   const handleBarClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -99,28 +122,16 @@ export function FilterBar({
 
   const handleToggleGroupConnector = useCallback(
     (groupId: string) => {
-      // Find the group index in children and delegate to onToggleConnector
-      // For OR groups inside the bar, clicking the OR connector should
-      // ungroup (toggle OR→AND). We find which leftIndex corresponds to
-      // this group and call onToggleConnector with that index.
       const idx = children.findIndex(
         (c) => isFilterGroup(c) && c.id === groupId,
       );
       if (idx !== -1 && onToggleConnector) {
-        // When clicking OR inside a group, we pass the group's own index
-        // as leftIndex so toggleConnector finds it and ungroups
         onToggleConnector(idx);
       }
     },
     [children, onToggleConnector],
   );
 
-  /**
-   * Determine if the AND connector between children[index-1] and children[index]
-   * should be clickable. Rules:
-   * - onToggleConnector must be provided
-   * - Both adjacent items must be conditions (not groups) to allow grouping
-   */
   function isConnectorClickable(index: number): boolean {
     if (!onToggleConnector) return false;
     if (index === 0) return false;
@@ -128,9 +139,27 @@ export function FilterBar({
     const left = children[index - 1];
     const right = children[index];
 
-    // Only allow grouping two conditions; prevent nesting
     return isFilterCondition(left) && isFilterCondition(right);
   }
+
+  // Keyboard shortcuts
+  const shortcuts = useMemo(
+    () => [
+      {
+        key: "f",
+        handler: () => setPaletteOpen(true),
+      },
+      {
+        key: "f",
+        modifiers: { shift: true } as const,
+        handler: handleClearAll,
+        enabled: hasFilters,
+      },
+    ],
+    [handleClearAll, hasFilters],
+  );
+
+  useKeyboardShortcuts(shortcuts);
 
   const pendingSelector = pendingField ? (
     pendingField.type === "text" ? (
@@ -164,7 +193,11 @@ export function FilterBar({
   ) : null;
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div
+      className={cn("space-y-2", className)}
+      role="search"
+      aria-label="Filter search"
+    >
       <div
         className={cn(
           "flex min-h-10 items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5",
@@ -181,7 +214,7 @@ export function FilterBar({
                 {index > 0 && <BooleanConnector type="AND" />}
                 <FilterGroupComponent
                   group={child}
-                  onRemoveCondition={onRemoveFilter}
+                  onRemoveCondition={handleRemoveFilter}
                   onUpdateConditionValues={onUpdateFilterValues}
                   onUpdateConditionOperator={onUpdateOperator}
                   onToggleGroupConnector={handleToggleGroupConnector}
@@ -212,7 +245,7 @@ export function FilterBar({
                 <FilterChip
                   condition={child}
                   fieldDef={fieldDef}
-                  onRemove={onRemoveFilter}
+                  onRemove={handleRemoveFilter}
                   onUpdateValues={onUpdateFilterValues}
                   onUpdateOperator={onUpdateOperator}
                   suggestions={textSuggestions?.[child.field]}
@@ -236,6 +269,7 @@ export function FilterBar({
               type="button"
               className="flex-1 cursor-text text-left text-sm text-muted-foreground outline-none"
               aria-label="Add filter"
+              data-filter-palette-trigger
             >
               {!hasFilters && placeholder}
             </button>
@@ -246,7 +280,7 @@ export function FilterBar({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={onClearAll}
+            onClick={handleClearAll}
             className="ml-auto shrink-0"
             aria-label="Clear all filters"
           >
@@ -254,6 +288,8 @@ export function FilterBar({
           </Button>
         )}
       </div>
+
+      <FilterAnnouncer filterState={filterState} resultCount={resultCount} />
 
       {hasErrors && (
         <Alert variant="destructive">

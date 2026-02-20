@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FilterBar } from "../FilterBar";
 import type { FilterState, FilterGroup, FilterCondition } from "@/types/filters";
@@ -359,8 +359,13 @@ describe("FilterBar (group rendering)", () => {
       />,
     );
 
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    // Multiple role="alert" elements exist (validation + announcer), check for the validation one
     expect(screen.getByText("Top-level OR is not allowed.")).toBeInTheDocument();
+    const alerts = screen.getAllByRole("alert");
+    const validationAlert = alerts.find(
+      (el) => el.getAttribute("data-slot") === "alert",
+    );
+    expect(validationAlert).toBeDefined();
   });
 
   it("applies destructive border when validation errors exist", () => {
@@ -389,7 +394,7 @@ describe("FilterBar (group rendering)", () => {
     expect(toolbar.className).toContain("border-destructive");
   });
 
-  it("does not render alert when no validation errors", () => {
+  it("does not render validation alert when no validation errors", () => {
     const state = makeStateWithFilters({ field: "status", values: ["Blocked"] });
 
     render(
@@ -404,7 +409,12 @@ describe("FilterBar (group rendering)", () => {
       />,
     );
 
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // The announcer's assertive region has role="alert", but the validation Alert should not exist
+    const alerts = screen.getAllByRole("alert");
+    const validationAlert = alerts.find(
+      (el) => el.getAttribute("data-slot") === "alert",
+    );
+    expect(validationAlert).toBeUndefined();
   });
 
   it("renders group + root condition mix with AND connector", () => {
@@ -435,5 +445,173 @@ describe("FilterBar (group rendering)", () => {
     expect(screen.getByText("(")).toBeInTheDocument();
     expect(screen.getByText("Impact")).toBeInTheDocument();
     expect(screen.getByText("High")).toBeInTheDocument();
+  });
+});
+
+// --- Accessibility & keyboard tests ---
+
+describe("FilterBar (accessibility)", () => {
+  it("has role='search' on outer wrapper", () => {
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("search")).toBeInTheDocument();
+  });
+
+  it("has aria-label='Filter search' on outer wrapper", () => {
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("search")).toHaveAttribute(
+      "aria-label",
+      "Filter search",
+    );
+  });
+
+  it("has role='toolbar' on inner bar", () => {
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("toolbar")).toBeInTheDocument();
+  });
+
+  it("has data-filter-palette-trigger on palette trigger button", () => {
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByLabelText("Add filter");
+    expect(trigger).toHaveAttribute("data-filter-palette-trigger");
+  });
+
+  it("renders FilterAnnouncer with polite live region", () => {
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("opens palette when F key is pressed", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    // Focus body to ensure we're not in an input
+    document.body.focus();
+    await user.keyboard("f");
+
+    // Palette should show field options
+    expect(screen.getByText("Attack type")).toBeInTheDocument();
+  });
+
+  it("calls onClearAll when Shift+F is pressed with filters", async () => {
+    const user = userEvent.setup();
+    const onClearAll = vi.fn();
+    const state = makeStateWithFilters({ field: "status", values: ["Blocked"] });
+
+    render(
+      <FilterBar
+        filterState={state}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={onClearAll}
+      />,
+    );
+
+    document.body.focus();
+    await user.keyboard("{Shift>}f{/Shift}");
+
+    expect(onClearAll).toHaveBeenCalled();
+  });
+
+  it("does not call onClearAll when Shift+F is pressed without filters", async () => {
+    const user = userEvent.setup();
+    const onClearAll = vi.fn();
+
+    render(
+      <FilterBar
+        filterState={createEmptyState()}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={onClearAll}
+      />,
+    );
+
+    document.body.focus();
+    await user.keyboard("{Shift>}f{/Shift}");
+
+    expect(onClearAll).not.toHaveBeenCalled();
+  });
+
+  it("wraps onRemoveFilter with focus management", async () => {
+    const user = userEvent.setup();
+    const onRemoveFilter = vi.fn();
+    const state = makeStateWithFilters({ field: "status", values: ["Blocked"] });
+
+    render(
+      <FilterBar
+        filterState={state}
+        onAddFilter={vi.fn()}
+        onRemoveFilter={onRemoveFilter}
+        onUpdateFilterValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Remove Status filter"));
+    expect(onRemoveFilter).toHaveBeenCalled();
   });
 });

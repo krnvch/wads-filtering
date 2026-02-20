@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EnumValueSelector } from "./EnumValueSelector";
@@ -75,6 +75,19 @@ export function FilterChip({
     [condition.id, onUpdateOperator],
   );
 
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLSpanElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        onRemove(condition.id);
+      }
+    },
+    [condition.id, onRemove],
+  );
+
+  const ariaLabel = `${condition.fieldLabel} ${formatOperator(condition.operator)} ${condition.values.join(" or ")}`;
+
   const valueEditor =
     fieldDef.type === "text" ? (
       <TextValueInput
@@ -116,6 +129,11 @@ export function FilterChip({
   return (
     <Badge
       variant="secondary"
+      tabIndex={0}
+      role="listitem"
+      aria-label={ariaLabel}
+      data-filter-id={condition.id}
+      onKeyDown={handleKeyDown}
       className={cn(
         "group relative gap-1 rounded-md py-1 pl-2 pr-2 text-sm font-normal",
         className,

@@ -40,7 +40,6 @@ export function FilterPalette({
       <PopoverContent
         className="w-64 p-0"
         align="start"
-        onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <Command>
           <CommandList>

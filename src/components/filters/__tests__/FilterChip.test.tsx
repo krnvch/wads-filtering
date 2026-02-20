@@ -182,6 +182,141 @@ describe("FilterChip", () => {
     expect(onUpdateOperator).toHaveBeenCalledWith("c1", "is_not");
   });
 
+  it("has tabIndex=0 for keyboard focus", () => {
+    const condition = makeCondition();
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("listitem");
+    expect(chip).toHaveAttribute("tabindex", "0");
+  });
+
+  it("has data-filter-id attribute", () => {
+    const condition = makeCondition({ id: "test-123" });
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("listitem");
+    expect(chip).toHaveAttribute("data-filter-id", "test-123");
+  });
+
+  it("has descriptive aria-label", () => {
+    const condition = makeCondition({
+      values: ["Blocked", "Monitored"],
+      operator: "is_not",
+    });
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("listitem");
+    expect(chip).toHaveAttribute(
+      "aria-label",
+      "Status is not Blocked or Monitored",
+    );
+  });
+
+  it("calls onRemove when Backspace is pressed on chip", async () => {
+    const user = userEvent.setup();
+    const onRemove = vi.fn();
+    const condition = makeCondition();
+
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={onRemove}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("listitem");
+    chip.focus();
+    await user.keyboard("{Backspace}");
+    expect(onRemove).toHaveBeenCalledWith("c1");
+  });
+
+  it("calls onRemove when Delete is pressed on chip", async () => {
+    const user = userEvent.setup();
+    const onRemove = vi.fn();
+    const condition = makeCondition();
+
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={onRemove}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("listitem");
+    chip.focus();
+    await user.keyboard("{Delete}");
+    expect(onRemove).toHaveBeenCalledWith("c1");
+  });
+
+  it("does not call onRemove when Backspace is pressed on child button", async () => {
+    const user = userEvent.setup();
+    const onRemove = vi.fn();
+    const condition = makeCondition();
+
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={onRemove}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    // Focus the remove button (child), not the chip itself
+    const removeBtn = screen.getByLabelText("Remove Status filter");
+    removeBtn.focus();
+    await user.keyboard("{Backspace}");
+    // onRemove should NOT be called via the chip's keydown handler
+    // (it might still be called if the button handles it, but that's separate)
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it("has role listitem", () => {
+    const condition = makeCondition();
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("listitem")).toBeInTheDocument();
+  });
+
   it("renders TextValueInput for text field type", async () => {
     const user = userEvent.setup();
     const condition = makeCondition({

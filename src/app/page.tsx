@@ -109,6 +109,7 @@ function HomeContent() {
         onClearAll={clearAll}
         validationErrors={validationErrors}
         textSuggestions={textSuggestions}
+        resultCount={filteredAttacks.length}
         className="mb-4"
       />
 
