@@ -5,6 +5,8 @@ import {
   createCondition,
   addCondition,
 } from "../filter-utils";
+import type { FilterCondition, FilterGroup, FilterState } from "@/types/filters";
+import { isFilterCondition, isFilterGroup } from "@/types/filters";
 
 describe("serializeFilterState", () => {
   it("returns empty params for empty state", () => {
@@ -240,5 +242,276 @@ describe("round-trip: serialize → deserialize", () => {
 
     const child = restored.expression.children[0];
     expect("operator" in child && child.operator).toBe("is");
+  });
+});
+
+// --- Group serialization tests ---
+
+function makeCondition(
+  id: string,
+  field: string,
+  values: string[],
+  operator: "is" | "is_not" | "contains" | "does_not_contain" = "is",
+): FilterCondition {
+  return { id, field, fieldLabel: field, operator, values };
+}
+
+function makeGroup(
+  id: string,
+  connector: "AND" | "OR",
+  children: FilterGroup["children"],
+): FilterGroup {
+  return { id, connector, children };
+}
+
+function makeState(expression: FilterGroup): FilterState {
+  return { expression };
+}
+
+describe("serializeFilterState (groups)", () => {
+  it("serializes a single OR group", () => {
+    const state = makeState(
+      makeGroup("root", "AND", [
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked"]),
+          makeCondition("c2", "type", ["XSS"]),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("g1.status")).toBe("Blocked");
+    expect(params.get("g1.type")).toBe("XSS");
+    expect(params.get("g1__op")).toBe("OR");
+  });
+
+  it("serializes group + root condition mix", () => {
+    const state = makeState(
+      makeGroup("root", "AND", [
+        makeCondition("c1", "impact", ["High"]),
+        makeGroup("g1", "OR", [
+          makeCondition("c2", "status", ["Blocked"]),
+          makeCondition("c3", "type", ["XSS"]),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("impact")).toBe("High");
+    expect(params.get("g1.status")).toBe("Blocked");
+    expect(params.get("g1.type")).toBe("XSS");
+    expect(params.get("g1__op")).toBe("OR");
+  });
+
+  it("serializes non-default operators inside groups", () => {
+    const state = makeState(
+      makeGroup("root", "AND", [
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked"], "is_not"),
+          makeCondition("c2", "type", ["XSS"]),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("g1.status")).toBe("Blocked");
+    expect(params.get("g1.status__op")).toBe("is_not");
+  });
+
+  it("serializes multiple groups", () => {
+    const state = makeState(
+      makeGroup("root", "AND", [
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked"]),
+          makeCondition("c2", "type", ["XSS"]),
+        ]),
+        makeGroup("g2", "OR", [
+          makeCondition("c3", "impact", ["High"]),
+          makeCondition("c4", "host", ["api.example.com"], "contains"),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("g1.status")).toBe("Blocked");
+    expect(params.get("g1__op")).toBe("OR");
+    expect(params.get("g2.impact")).toBe("High");
+    expect(params.get("g2__op")).toBe("OR");
+    // host has default op "contains" for text → no __op param
+    expect(params.get("g2.host")).toBe("api.example.com");
+    expect(params.get("g2.host__op")).toBeNull();
+  });
+});
+
+describe("deserializeFilterState (groups)", () => {
+  it("deserializes a single OR group", () => {
+    const params = new URLSearchParams(
+      "g1.status=Blocked&g1.type=XSS&g1__op=OR",
+    );
+    const state = deserializeFilterState(params);
+
+    expect(state.expression.children).toHaveLength(1);
+    const group = state.expression.children[0];
+    expect(isFilterGroup(group)).toBe(true);
+    if (isFilterGroup(group)) {
+      expect(group.connector).toBe("OR");
+      expect(group.children).toHaveLength(2);
+    }
+  });
+
+  it("deserializes group with root condition", () => {
+    const params = new URLSearchParams(
+      "impact=High&g1.status=Blocked&g1.type=XSS&g1__op=OR",
+    );
+    const state = deserializeFilterState(params);
+
+    expect(state.expression.children).toHaveLength(2);
+
+    const rootCondition = state.expression.children.find(
+      (c) => isFilterCondition(c) && c.field === "impact",
+    );
+    expect(rootCondition).toBeDefined();
+
+    const group = state.expression.children.find(isFilterGroup);
+    expect(group).toBeDefined();
+    if (group && isFilterGroup(group)) {
+      expect(group.connector).toBe("OR");
+    }
+  });
+
+  it("deserializes operator overrides inside groups", () => {
+    const params = new URLSearchParams(
+      "g1.status=Blocked&g1.status__op=is_not&g1.type=XSS&g1__op=OR",
+    );
+    const state = deserializeFilterState(params);
+
+    const group = state.expression.children[0];
+    if (isFilterGroup(group)) {
+      const statusCondition = group.children.find(
+        (c) => isFilterCondition(c) && c.field === "status",
+      );
+      expect(
+        statusCondition && "operator" in statusCondition && statusCondition.operator,
+      ).toBe("is_not");
+    }
+  });
+
+  it("skips unknown fields inside groups", () => {
+    const params = new URLSearchParams(
+      "g1.status=Blocked&g1.unknown=foo&g1__op=OR",
+    );
+    const state = deserializeFilterState(params);
+
+    // Single-child group gets sanitized (promoted)
+    expect(state.expression.children).toHaveLength(1);
+    expect(isFilterCondition(state.expression.children[0])).toBe(true);
+  });
+
+  it("sanitizes single-child groups (promotes to root)", () => {
+    const params = new URLSearchParams("g1.status=Blocked&g1__op=OR");
+    const state = deserializeFilterState(params);
+
+    // Single condition in group → promoted
+    expect(state.expression.children).toHaveLength(1);
+    expect(isFilterCondition(state.expression.children[0])).toBe(true);
+  });
+
+  it("defaults group connector to AND when g{N}__op is missing", () => {
+    const params = new URLSearchParams("g1.status=Blocked&g1.type=XSS");
+    const state = deserializeFilterState(params);
+
+    const group = state.expression.children[0];
+    if (isFilterGroup(group)) {
+      expect(group.connector).toBe("AND");
+    }
+  });
+
+  it("handles empty group params gracefully", () => {
+    const params = new URLSearchParams("g1__op=OR");
+    const state = deserializeFilterState(params);
+    expect(state.expression.children).toHaveLength(0);
+  });
+});
+
+describe("round-trip: groups", () => {
+  it("round-trips OR group", () => {
+    const original = makeState(
+      makeGroup("root", "AND", [
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked"]),
+          makeCondition("c2", "type", ["XSS"]),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(original);
+    const restored = deserializeFilterState(params);
+
+    expect(restored.expression.children).toHaveLength(1);
+    const group = restored.expression.children[0];
+    expect(isFilterGroup(group)).toBe(true);
+    if (isFilterGroup(group)) {
+      expect(group.connector).toBe("OR");
+      expect(group.children).toHaveLength(2);
+      const fields = group.children.map((c) =>
+        isFilterCondition(c) ? c.field : "",
+      );
+      expect(fields).toContain("status");
+      expect(fields).toContain("type");
+    }
+  });
+
+  it("round-trips mixed root + group", () => {
+    const original = makeState(
+      makeGroup("root", "AND", [
+        makeCondition("c0", "impact", ["High"]),
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked"]),
+          makeCondition("c2", "type", ["XSS", "CSRF"]),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(original);
+    const restored = deserializeFilterState(params);
+
+    expect(restored.expression.children).toHaveLength(2);
+    const rootCond = restored.expression.children.find(
+      (c) => isFilterCondition(c) && c.field === "impact",
+    );
+    expect(rootCond).toBeDefined();
+
+    const group = restored.expression.children.find(isFilterGroup);
+    expect(group).toBeDefined();
+    if (group && isFilterGroup(group)) {
+      expect(group.children).toHaveLength(2);
+    }
+  });
+
+  it("round-trips group with non-default operators", () => {
+    const original = makeState(
+      makeGroup("root", "AND", [
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked"], "is_not"),
+          makeCondition("c2", "endpoints", ["api"], "contains"),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(original);
+    const restored = deserializeFilterState(params);
+
+    const group = restored.expression.children[0];
+    if (isFilterGroup(group)) {
+      const statusCond = group.children.find(
+        (c) => isFilterCondition(c) && c.field === "status",
+      ) as FilterCondition | undefined;
+      expect(statusCond?.operator).toBe("is_not");
+
+      const endpointCond = group.children.find(
+        (c) => isFilterCondition(c) && c.field === "endpoints",
+      ) as FilterCondition | undefined;
+      expect(endpointCond?.operator).toBe("contains");
+    }
   });
 });

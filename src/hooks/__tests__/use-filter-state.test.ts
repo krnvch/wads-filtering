@@ -198,4 +198,90 @@ describe("useFilterState", () => {
       expect(result.current.activeFilterCount).toBe(0);
     });
   });
+
+  describe("toggleConnector", () => {
+    it("groups two conditions into an OR group", () => {
+      const { result } = renderHook(() => useFilterState());
+
+      act(() => {
+        result.current.addFilter("status", ["Blocked"]);
+        result.current.addFilter("type", ["XSS"]);
+      });
+
+      act(() => {
+        result.current.toggleConnector(0);
+      });
+
+      expect(result.current.filterState.expression.children).toHaveLength(1);
+      const group = result.current.filterState.expression.children[0];
+      expect("connector" in group && group.connector).toBe("OR");
+    });
+
+    it("ungroups an OR group back to conditions", () => {
+      const { result } = renderHook(() => useFilterState());
+
+      act(() => {
+        result.current.addFilter("status", ["Blocked"]);
+        result.current.addFilter("type", ["XSS"]);
+      });
+
+      // Group them
+      act(() => {
+        result.current.toggleConnector(0);
+      });
+
+      // Ungroup them
+      act(() => {
+        result.current.toggleConnector(0);
+      });
+
+      expect(result.current.filterState.expression.children).toHaveLength(2);
+      expect(
+        result.current.filterState.expression.children.every(
+          (c) => "field" in c,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("validationErrors", () => {
+    it("returns no errors for valid state", () => {
+      const { result } = renderHook(() => useFilterState());
+
+      act(() => {
+        result.current.addFilter("status", ["Blocked"]);
+      });
+
+      expect(result.current.validationErrors).toEqual([]);
+    });
+
+    it("returns errors for invalid state", () => {
+      const initial = {
+        expression: {
+          id: "root",
+          connector: "OR" as const,
+          children: [
+            {
+              id: "c1",
+              field: "status",
+              fieldLabel: "Status",
+              operator: "is" as const,
+              values: ["Blocked"],
+            },
+            {
+              id: "c2",
+              field: "type",
+              fieldLabel: "Attack type",
+              operator: "is" as const,
+              values: ["XSS"],
+            },
+          ],
+        },
+      };
+
+      const { result } = renderHook(() => useFilterState(initial));
+      expect(result.current.validationErrors.length).toBeGreaterThan(0);
+      expect(result.current.validationErrors[0].type).toBe("TOP_LEVEL_OR");
+    });
+  });
 });

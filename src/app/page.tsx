@@ -69,7 +69,9 @@ function HomeContent() {
     removeFilter,
     updateFilterValues,
     updateOperator,
+    toggleConnector,
     clearAll,
+    validationErrors,
   } = useFilterUrlState();
 
   const textSuggestions = useMemo(
@@ -103,7 +105,9 @@ function HomeContent() {
         onRemoveFilter={removeFilter}
         onUpdateFilterValues={updateFilterValues}
         onUpdateOperator={updateOperator}
+        onToggleConnector={toggleConnector}
         onClearAll={clearAll}
+        validationErrors={validationErrors}
         textSuggestions={textSuggestions}
         className="mb-4"
       />

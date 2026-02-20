@@ -9,7 +9,9 @@ import {
   removeCondition,
   updateConditionValues,
   updateConditionOperator,
+  toggleConnector as toggleConnectorUtil,
 } from "@/lib/filter-utils";
+import { validateExpression } from "@/lib/filter-validation";
 import type { FilterOperator } from "@/types/filters";
 
 export function useFilterState(initialState?: FilterState) {
@@ -41,6 +43,10 @@ export function useFilterState(initialState?: FilterState) {
     [],
   );
 
+  const toggleConnector = useCallback((leftIndex: number) => {
+    setFilterState((prev) => toggleConnectorUtil(prev, leftIndex));
+  }, []);
+
   const clearAll = useCallback(() => {
     setFilterState(createEmptyState());
   }, []);
@@ -55,14 +61,21 @@ export function useFilterState(initialState?: FilterState) {
     [filterState],
   );
 
+  const validationErrors = useMemo(
+    () => validateExpression(filterState),
+    [filterState],
+  );
+
   return {
     filterState,
     addFilter,
     removeFilter,
     updateFilterValues,
     updateOperator,
+    toggleConnector,
     clearAll,
     hasActiveFilters,
     activeFilterCount,
+    validationErrors,
   };
 }

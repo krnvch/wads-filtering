@@ -1,5 +1,12 @@
-import type { FilterOperator, FilterState } from "@/types/filters";
+import type {
+  FilterCondition,
+  FilterGroup,
+  FilterOperator,
+  FilterState,
+} from "@/types/filters";
+import { isFilterCondition, isFilterGroup } from "@/types/filters";
 import { FILTER_FIELDS, getFieldByKey } from "./filter-schema";
+import { sanitizeExpression } from "./filter-validation";
 
 const VALID_OPERATORS = new Set<FilterOperator>([
   "is",
@@ -21,29 +28,56 @@ function getDefaultOperator(fieldKey: string): FilterOperator {
 const KNOWN_FIELD_KEYS = new Set(FILTER_FIELDS.map((f) => f.key));
 
 /**
+ * Serialize a single condition to URL params with an optional prefix.
+ */
+function serializeCondition(
+  params: URLSearchParams,
+  condition: FilterCondition,
+  prefix: string,
+): void {
+  const { field, operator, values } = condition;
+  if (values.length === 0) return;
+
+  params.set(`${prefix}${field}`, values.join(","));
+
+  const defaultOp = getDefaultOperator(field);
+  if (operator !== defaultOp) {
+    params.set(`${prefix}${field}__op`, operator);
+  }
+}
+
+/**
  * Serialize filter state to URL search params.
  *
  * Format (ADR-001 Hybrid):
  *  - Field values: `?status=Blocked,Monitored`
  *  - Operator override (non-default only): `?status__op=is_not`
- *  - Omits `__op` param when operator matches the field's default
+ *  - Groups: `?g1.status=Blocked&g1.type=XSS&g1__op=OR`
  *
- * Phase 2 scope: AND-only flat conditions.
+ * Backward compatible: AND-only flat conditions have no prefix.
  */
 export function serializeFilterState(state: FilterState): URLSearchParams {
   const params = new URLSearchParams();
+  let groupIndex = 1;
 
   for (const child of state.expression.children) {
-    if (!("field" in child)) continue;
+    if (isFilterCondition(child)) {
+      serializeCondition(params, child, "");
+    } else if (isFilterGroup(child)) {
+      const prefix = `g${groupIndex}.`;
 
-    const { field, operator, values } = child;
-    if (values.length === 0) continue;
+      for (const groupChild of child.children) {
+        if (isFilterCondition(groupChild)) {
+          serializeCondition(params, groupChild, prefix);
+        }
+      }
 
-    params.set(field, values.join(","));
+      // Write group connector (only OR is meaningful — AND is default)
+      if (child.connector === "OR") {
+        params.set(`g${groupIndex}__op`, "OR");
+      }
 
-    const defaultOp = getDefaultOperator(field);
-    if (operator !== defaultOp) {
-      params.set(`${field}__op`, operator);
+      groupIndex++;
     }
   }
 
@@ -54,46 +88,109 @@ export function serializeFilterState(state: FilterState): URLSearchParams {
  * Deserialize URL search params to filter state.
  *
  * - Parses `field=val1,val2` + optional `field__op=operator`
+ * - Parses `g{N}.field=val` + `g{N}__op=OR` for groups
  * - Skips unknown fields
  * - Falls back to default operator for invalid `__op` values
- * - Uses deterministic IDs (`filter_${field}`) for stable references
+ * - Uses deterministic IDs (`filter_${field}`, `group_${N}`)
+ * - Sanitizes the result (promotes single-child groups, removes empty groups)
  */
 export function deserializeFilterState(params: URLSearchParams): FilterState {
-  const children: FilterState["expression"]["children"] = [];
+  const rootConditions: FilterCondition[] = [];
+  const groupData = new Map<
+    number,
+    { conditions: FilterCondition[]; connector: "AND" | "OR" }
+  >();
 
+  // Classify params into root-level and group-level
   for (const [key, value] of params.entries()) {
-    // Skip operator override params — they're consumed with their field
+    // Skip operator override params
     if (key.endsWith("__op")) continue;
 
-    // Skip unknown fields
-    if (!KNOWN_FIELD_KEYS.has(key)) continue;
+    // Check for group prefix: g{N}.field
+    const groupMatch = key.match(/^g(\d+)\.(.+)$/);
 
-    const values = value.split(",").filter(Boolean);
-    if (values.length === 0) continue;
+    if (groupMatch) {
+      const groupNum = parseInt(groupMatch[1], 10);
+      const fieldKey = groupMatch[2];
 
-    const opParam = params.get(`${key}__op`);
-    const defaultOp = getDefaultOperator(key);
-    const operator: FilterOperator =
-      opParam && VALID_OPERATORS.has(opParam as FilterOperator)
-        ? (opParam as FilterOperator)
-        : defaultOp;
+      if (!KNOWN_FIELD_KEYS.has(fieldKey)) continue;
 
-    const fieldDef = getFieldByKey(key);
+      const values = value.split(",").filter(Boolean);
+      if (values.length === 0) continue;
 
-    children.push({
-      id: `filter_${key}`,
-      field: key,
-      fieldLabel: fieldDef?.label ?? key,
-      operator,
-      values,
-    });
+      const opParam = params.get(`g${groupNum}.${fieldKey}__op`);
+      const defaultOp = getDefaultOperator(fieldKey);
+      const operator: FilterOperator =
+        opParam && VALID_OPERATORS.has(opParam as FilterOperator)
+          ? (opParam as FilterOperator)
+          : defaultOp;
+
+      const fieldDef = getFieldByKey(fieldKey);
+      const condition: FilterCondition = {
+        id: `filter_g${groupNum}_${fieldKey}`,
+        field: fieldKey,
+        fieldLabel: fieldDef?.label ?? fieldKey,
+        operator,
+        values,
+      };
+
+      if (!groupData.has(groupNum)) {
+        // Read group connector
+        const groupOpParam = params.get(`g${groupNum}__op`);
+        const connector = groupOpParam === "OR" ? "OR" : "AND";
+        groupData.set(groupNum, { conditions: [], connector });
+      }
+
+      groupData.get(groupNum)!.conditions.push(condition);
+    } else {
+      // Root-level condition
+      if (!KNOWN_FIELD_KEYS.has(key)) continue;
+
+      const values = value.split(",").filter(Boolean);
+      if (values.length === 0) continue;
+
+      const opParam = params.get(`${key}__op`);
+      const defaultOp = getDefaultOperator(key);
+      const operator: FilterOperator =
+        opParam && VALID_OPERATORS.has(opParam as FilterOperator)
+          ? (opParam as FilterOperator)
+          : defaultOp;
+
+      const fieldDef = getFieldByKey(key);
+
+      rootConditions.push({
+        id: `filter_${key}`,
+        field: key,
+        fieldLabel: fieldDef?.label ?? key,
+        operator,
+        values,
+      });
+    }
   }
 
-  return {
+  // Build children: root conditions first, then groups in order
+  const children: (FilterCondition | FilterGroup)[] = [...rootConditions];
+
+  const sortedGroupNums = [...groupData.keys()].sort((a, b) => a - b);
+  for (const groupNum of sortedGroupNums) {
+    const data = groupData.get(groupNum)!;
+    if (data.conditions.length === 0) continue;
+
+    const group: FilterGroup = {
+      id: `group_${groupNum}`,
+      connector: data.connector,
+      children: data.conditions,
+    };
+    children.push(group);
+  }
+
+  const state: FilterState = {
     expression: {
       id: "root",
       connector: "AND",
       children,
     },
   };
+
+  return sanitizeExpression(state);
 }
