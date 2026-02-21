@@ -18,7 +18,7 @@ describe("OperatorSelector", () => {
     expect(screen.getByText("is")).toBeInTheDocument();
   });
 
-  it("shows all 4 operators when opened", async () => {
+  it("shows enum operators when opened for enum field", async () => {
     const user = userEvent.setup();
 
     render(
@@ -34,8 +34,29 @@ describe("OperatorSelector", () => {
     await user.click(screen.getByText("is"));
 
     expect(screen.getByText("is not")).toBeInTheDocument();
-    expect(screen.getByText("contains")).toBeInTheDocument();
+    expect(screen.getByText("is any of")).toBeInTheDocument();
+    expect(screen.getByText("is not any of")).toBeInTheDocument();
+  });
+
+  it("shows 2 text operators when opened for text field", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <OperatorSelector
+        currentOperator="contains"
+        fieldType="text"
+        onSelect={vi.fn()}
+      >
+        <button>contains</button>
+      </OperatorSelector>,
+    );
+
+    await user.click(screen.getByText("contains"));
+
     expect(screen.getByText("does not contain")).toBeInTheDocument();
+    // Should NOT show enum operators
+    expect(screen.queryByText("is any of")).not.toBeInTheDocument();
+    expect(screen.queryByText("is none of")).not.toBeInTheDocument();
   });
 
   it("shows checkmark on current operator", async () => {
@@ -76,9 +97,29 @@ describe("OperatorSelector", () => {
     );
 
     await user.click(screen.getByText("is"));
-    await user.click(screen.getByText("contains"));
+    await user.click(screen.getByText("is any of"));
 
-    expect(onSelect).toHaveBeenCalledWith("contains");
+    expect(onSelect).toHaveBeenCalledWith("is_any_of");
+  });
+
+  it("calls onSelect with is_none_of when selected", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+
+    render(
+      <OperatorSelector
+        currentOperator="is"
+        fieldType="enum"
+        onSelect={onSelect}
+      >
+        <button>is</button>
+      </OperatorSelector>,
+    );
+
+    await user.click(screen.getByText("is"));
+    await user.click(screen.getByText("is not any of"));
+
+    expect(onSelect).toHaveBeenCalledWith("is_none_of");
   });
 
   it("closes dropdown after selection", async () => {
@@ -95,9 +136,9 @@ describe("OperatorSelector", () => {
     );
 
     await user.click(screen.getByText("is"));
-    await user.click(screen.getByText("contains"));
+    await user.click(screen.getByText("is any of"));
 
     // Dropdown should close — menu items should not be in DOM
-    expect(screen.queryByText("does not contain")).not.toBeInTheDocument();
+    expect(screen.queryByText("is none of")).not.toBeInTheDocument();
   });
 });

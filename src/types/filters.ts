@@ -1,4 +1,33 @@
-export type FilterOperator = "is" | "is_not" | "contains" | "does_not_contain";
+export type FilterOperator =
+  // Universal
+  | "is"
+  | "is_not"
+  | "is_set"
+  | "is_not_set"
+  // Enum multi-value
+  | "is_any_of"
+  | "is_none_of"
+  // Text
+  | "contains"
+  | "does_not_contain"
+  | "starts_with"
+  | "ends_with"
+  // Numeric
+  | "equals"
+  | "not_equals"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "in_between"
+  // Date
+  | "before"
+  | "after"
+  | "on"
+  | "not_on"
+  | "in_the_last"
+  | "not_in_the_last"
+  | "between_dates";
 
 export interface FilterCondition {
   id: string;
@@ -18,14 +47,15 @@ export interface FilterState {
   expression: FilterGroup;
 }
 
-export type FilterFieldType = "enum" | "text";
+export type FilterFieldType = "enum" | "text" | "date" | "numeric";
 
 export interface FilterFieldDef {
   key: string;
   label: string;
-  category: "Attack characteristics" | "Target & Context";
+  category: "Attack characteristics" | "Target & Context" | "Temporal";
   type: FilterFieldType;
   values?: string[];
+  operators?: FilterOperator[];
 }
 
 export function isFilterCondition(

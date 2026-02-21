@@ -32,13 +32,23 @@ The filter bar sits at the top of the attacks page. Click anywhere on the empty 
 Each active filter is displayed as a chip in the format:
 
 ```
-Field  operator  Value1 or Value2
+Field  operator  Value1, Value2
 ```
+
+The **operator** carries the semantic meaning — it tells you the logical relationship between values.
+
+### Operator auto-upgrade
+When you select multiple values, the operator upgrades automatically:
+- Select 1 value: `Status is Blocked`
+- Select 2nd value: `Status is any of Blocked, Monitoring` (auto-upgraded)
+- Remove back to 1: `Status is Blocked` (auto-downgraded)
+
+The same applies for negation: `is not` upgrades to `is none of` with multiple values.
 
 ### Editing a chip
 - **Click the operator** (e.g. "is") to change it. Available operators:
-  - `is` / `is not` — exact match
-  - `contains` / `does not contain` — substring match
+  - **Enum fields**: `is` / `is not` / `is any of` / `is none of`
+  - **Text fields**: `contains` / `does not contain`
 - **Click the value** (highlighted in blue) to open the value editor and change selections.
 
 ### Removing a chip
@@ -55,7 +65,7 @@ Filters are combined with **AND** by default. You can create **OR groups** for t
 Click the **AND** connector between two chips. It wraps them into a parenthesized OR group:
 
 ```
-( Status is Blocked  OR  Attack type is XSS )  AND  Impact is High
+( Status is any of Blocked, Monitoring  OR  Attack type is XSS )  AND  Impact is High
 ```
 
 ### Removing an OR group
@@ -116,7 +126,7 @@ The filter bar includes full ARIA support:
 ### Landmarks and roles
 - **Outer wrapper**: `role="search"` with `aria-label="Filter search"` — screen readers announce it as a search landmark.
 - **Inner bar**: `role="toolbar"` with `aria-label="Filter bar"`.
-- **Each chip**: `role="listitem"` with a descriptive `aria-label` like "Status is Blocked or Monitored".
+- **Each chip**: `role="listitem"` with a descriptive `aria-label` like "Status is any of Blocked, Monitored".
 
 ### Live announcements
 Two hidden `aria-live` regions announce filter changes:
@@ -158,7 +168,9 @@ All filter state is serialized to URL query parameters. This means:
 | Endpoint | Text | Freeform with autocomplete suggestions |
 | Parameter | Text | Freeform with autocomplete suggestions |
 
-Text fields support `contains` / `does not contain` operators by default. Enum fields default to `is`.
+**Enum fields** support `is` / `is not` (single value) and `is any of` / `is none of` (multiple values). The operator auto-upgrades when you select additional values.
+
+**Text fields** support `contains` / `does not contain`.
 
 ---
 

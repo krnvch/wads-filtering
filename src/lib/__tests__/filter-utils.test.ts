@@ -8,9 +8,7 @@ import {
   updateConditionValues,
   updateConditionOperator,
   generateFilterId,
-  createGroup,
-  ungroupChildren,
-  toggleConnector,
+  autoUpgradeOperator,
 } from "../filter-utils";
 import type { FilterCondition, FilterGroup, FilterState } from "@/types/filters";
 import { isFilterCondition, isFilterGroup } from "@/types/filters";
@@ -209,285 +207,104 @@ describe("updateConditionOperator", () => {
   });
 });
 
-// --- Helpers for group tests ---
-
-function makeCondition(
-  id: string,
-  field: string,
-  values: string[] = ["val"],
-): FilterCondition {
-  return { id, field, fieldLabel: field, operator: "is", values };
-}
-
-function makeGroup(
-  id: string,
-  connector: "AND" | "OR",
-  children: FilterGroup["children"],
-): FilterGroup {
-  return { id, connector, children };
-}
-
-function makeState(expression: FilterGroup): FilterState {
-  return { expression };
-}
-
-// --- Recursive remove/update/operator tests ---
-
-describe("removeCondition (recursive)", () => {
-  it("removes condition inside a group", () => {
-    const c1 = makeCondition("c1", "status", ["Blocked"]);
-    const c2 = makeCondition("c2", "type", ["XSS"]);
-    const c3 = makeCondition("c3", "impact", ["High"]);
-    const state = makeState(
-      makeGroup("root", "AND", [
-        makeGroup("g1", "OR", [c1, c2]),
-        c3,
-      ]),
-    );
-
-    const newState = removeCondition(state, "c1");
-    // g1 had 2 children, now 1 → auto-ungroup: c2 promoted to root
-    expect(newState.expression.children).toHaveLength(2);
-    expect(isFilterCondition(newState.expression.children[0])).toBe(true);
-    const promoted = newState.expression.children[0] as FilterCondition;
-    expect(promoted.id).toBe("c2");
+describe("autoUpgradeOperator", () => {
+  it("upgrades is to is_any_of when multiple values", () => {
+    expect(autoUpgradeOperator("is", 2)).toBe("is_any_of");
   });
 
-  it("auto-ungroups when group drops to 1 child", () => {
-    const c1 = makeCondition("c1", "status");
-    const c2 = makeCondition("c2", "type");
-    const state = makeState(
-      makeGroup("root", "AND", [makeGroup("g1", "OR", [c1, c2])]),
-    );
-
-    const newState = removeCondition(state, "c1");
-    expect(newState.expression.children).toHaveLength(1);
-    expect(isFilterCondition(newState.expression.children[0])).toBe(true);
-    expect((newState.expression.children[0] as FilterCondition).id).toBe("c2");
+  it("downgrades is_any_of to is when single value", () => {
+    expect(autoUpgradeOperator("is_any_of", 1)).toBe("is");
   });
 
-  it("removes empty group when last child is removed", () => {
-    const c1 = makeCondition("c1", "status");
-    const c2 = makeCondition("c2", "type");
-    const state = makeState(
-      makeGroup("root", "AND", [makeGroup("g1", "OR", [c1]), c2]),
-    );
+  it("downgrades is_any_of to is when zero values", () => {
+    expect(autoUpgradeOperator("is_any_of", 0)).toBe("is");
+  });
 
-    const newState = removeCondition(state, "c1");
-    // g1 had 1 child (already single), after removal it's empty → dropped
-    // Wait: removeFromGroup: c1 removed → g1 has 0 children → dropped
-    expect(newState.expression.children).toHaveLength(1);
-    expect((newState.expression.children[0] as FilterCondition).id).toBe("c2");
+  it("upgrades is_not to is_none_of when multiple values", () => {
+    expect(autoUpgradeOperator("is_not", 2)).toBe("is_none_of");
+  });
+
+  it("downgrades is_none_of to is_not when single value", () => {
+    expect(autoUpgradeOperator("is_none_of", 1)).toBe("is_not");
+  });
+
+  it("does not change contains regardless of count", () => {
+    expect(autoUpgradeOperator("contains", 1)).toBe("contains");
+    expect(autoUpgradeOperator("contains", 3)).toBe("contains");
+  });
+
+  it("does not change does_not_contain regardless of count", () => {
+    expect(autoUpgradeOperator("does_not_contain", 1)).toBe("does_not_contain");
+    expect(autoUpgradeOperator("does_not_contain", 3)).toBe("does_not_contain");
+  });
+
+  it("keeps is with single value", () => {
+    expect(autoUpgradeOperator("is", 1)).toBe("is");
+  });
+
+  it("keeps is_not with single value", () => {
+    expect(autoUpgradeOperator("is_not", 1)).toBe("is_not");
+  });
+
+  it("keeps is_any_of with multiple values", () => {
+    expect(autoUpgradeOperator("is_any_of", 3)).toBe("is_any_of");
+  });
+
+  it("keeps is_none_of with multiple values", () => {
+    expect(autoUpgradeOperator("is_none_of", 2)).toBe("is_none_of");
   });
 });
 
-describe("updateConditionValues (recursive)", () => {
-  it("updates values for condition inside a group", () => {
-    const c1 = makeCondition("c1", "status", ["Blocked"]);
-    const c2 = makeCondition("c2", "type", ["XSS"]);
-    const state = makeState(
-      makeGroup("root", "AND", [makeGroup("g1", "OR", [c1, c2])]),
-    );
+describe("updateConditionValues (auto-upgrade)", () => {
+  it("auto-upgrades is to is_any_of when going from 1 to 2 values", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked"]);
+    state = addCondition(state, condition);
 
-    const newState = updateConditionValues(state, "c1", ["Blocked", "Monitored"]);
-    const group = newState.expression.children[0] as FilterGroup;
-    const updated = group.children[0] as FilterCondition;
-    expect(updated.values).toEqual(["Blocked", "Monitored"]);
+    const newState = updateConditionValues(state, condition.id, ["Blocked", "Monitored"]);
+    const updated = newState.expression.children[0];
+    expect("operator" in updated && updated.operator).toBe("is_any_of");
+    expect("values" in updated && updated.values).toEqual(["Blocked", "Monitored"]);
   });
 
-  it("removes condition inside group when values empty, with auto-ungroup", () => {
-    const c1 = makeCondition("c1", "status", ["Blocked"]);
-    const c2 = makeCondition("c2", "type", ["XSS"]);
-    const state = makeState(
-      makeGroup("root", "AND", [makeGroup("g1", "OR", [c1, c2])]),
-    );
+  it("auto-downgrades is_any_of to is when going from 2 to 1 value", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked", "Monitored"], "is_any_of");
+    state = addCondition(state, condition);
 
-    const newState = updateConditionValues(state, "c1", []);
-    // c1 removed → g1 has 1 child → auto-ungroup
-    expect(newState.expression.children).toHaveLength(1);
-    expect(isFilterCondition(newState.expression.children[0])).toBe(true);
-    expect((newState.expression.children[0] as FilterCondition).id).toBe("c2");
+    const newState = updateConditionValues(state, condition.id, ["Blocked"]);
+    const updated = newState.expression.children[0];
+    expect("operator" in updated && updated.operator).toBe("is");
+  });
+
+  it("auto-upgrades is_not to is_none_of when adding values", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked"], "is_not");
+    state = addCondition(state, condition);
+
+    const newState = updateConditionValues(state, condition.id, ["Blocked", "Monitored"]);
+    const updated = newState.expression.children[0];
+    expect("operator" in updated && updated.operator).toBe("is_none_of");
+  });
+
+  it("auto-downgrades is_none_of to is_not when reducing to 1 value", () => {
+    let state = createEmptyState();
+    const condition = createCondition("status", ["Blocked", "Monitored"], "is_none_of");
+    state = addCondition(state, condition);
+
+    const newState = updateConditionValues(state, condition.id, ["Blocked"]);
+    const updated = newState.expression.children[0];
+    expect("operator" in updated && updated.operator).toBe("is_not");
+  });
+
+  it("does not change contains operator on value count change", () => {
+    let state = createEmptyState();
+    const condition = createCondition("host", ["api"], "contains");
+    state = addCondition(state, condition);
+
+    const newState = updateConditionValues(state, condition.id, ["api", "admin"]);
+    const updated = newState.expression.children[0];
+    expect("operator" in updated && updated.operator).toBe("contains");
   });
 });
 
-describe("updateConditionOperator (recursive)", () => {
-  it("updates operator for condition inside a group", () => {
-    const c1 = makeCondition("c1", "status", ["Blocked"]);
-    const c2 = makeCondition("c2", "type", ["XSS"]);
-    const state = makeState(
-      makeGroup("root", "AND", [makeGroup("g1", "OR", [c1, c2])]),
-    );
-
-    const newState = updateConditionOperator(state, "c1", "is_not");
-    const group = newState.expression.children[0] as FilterGroup;
-    const updated = group.children[0] as FilterCondition;
-    expect(updated.operator).toBe("is_not");
-  });
-});
-
-// --- Group operations tests ---
-
-describe("createGroup", () => {
-  it("wraps two adjacent conditions into an OR group", () => {
-    const c1 = createCondition("status", ["Blocked"]);
-    const c2 = createCondition("type", ["XSS"]);
-    let state = createEmptyState();
-    state = addCondition(state, c1);
-    state = addCondition(state, c2);
-
-    const newState = createGroup(state, c1.id, c2.id);
-    expect(newState.expression.children).toHaveLength(1);
-    const group = newState.expression.children[0];
-    expect(isFilterGroup(group)).toBe(true);
-    if (isFilterGroup(group)) {
-      expect(group.connector).toBe("OR");
-      expect(group.children).toHaveLength(2);
-    }
-  });
-
-  it("inserts group at position of first condition", () => {
-    const c1 = createCondition("status", ["Blocked"]);
-    const c2 = createCondition("type", ["XSS"]);
-    const c3 = createCondition("impact", ["High"]);
-    let state = createEmptyState();
-    state = addCondition(state, c1);
-    state = addCondition(state, c2);
-    state = addCondition(state, c3);
-
-    const newState = createGroup(state, c2.id, c3.id);
-    expect(newState.expression.children).toHaveLength(2);
-    // c1 stays at index 0, group at index 1
-    expect(isFilterCondition(newState.expression.children[0])).toBe(true);
-    expect(isFilterGroup(newState.expression.children[1])).toBe(true);
-  });
-
-  it("no-ops if condition ids are not found", () => {
-    const state = createEmptyState();
-    const newState = createGroup(state, "nope1", "nope2");
-    expect(newState).toBe(state);
-  });
-
-  it("groups non-adjacent conditions", () => {
-    const c1 = createCondition("status", ["Blocked"]);
-    const c2 = createCondition("type", ["XSS"]);
-    const c3 = createCondition("impact", ["High"]);
-    let state = createEmptyState();
-    state = addCondition(state, c1);
-    state = addCondition(state, c2);
-    state = addCondition(state, c3);
-
-    // Group c1 and c3 (non-adjacent)
-    const newState = createGroup(state, c1.id, c3.id);
-    expect(newState.expression.children).toHaveLength(2);
-    // Group at position 0 (c1's position), c2 remains
-    expect(isFilterGroup(newState.expression.children[0])).toBe(true);
-    expect(isFilterCondition(newState.expression.children[1])).toBe(true);
-    expect((newState.expression.children[1] as FilterCondition).id).toBe(c2.id);
-  });
-});
-
-describe("ungroupChildren", () => {
-  it("promotes group children to root at group position", () => {
-    const c1 = makeCondition("c1", "status");
-    const c2 = makeCondition("c2", "type");
-    const c3 = makeCondition("c3", "impact");
-    const state = makeState(
-      makeGroup("root", "AND", [
-        c1,
-        makeGroup("g1", "OR", [c2, c3]),
-      ]),
-    );
-
-    const newState = ungroupChildren(state, "g1");
-    expect(newState.expression.children).toHaveLength(3);
-    expect((newState.expression.children[0] as FilterCondition).id).toBe("c1");
-    expect((newState.expression.children[1] as FilterCondition).id).toBe("c2");
-    expect((newState.expression.children[2] as FilterCondition).id).toBe("c3");
-  });
-
-  it("no-ops if group id not found", () => {
-    const state = makeState(makeGroup("root", "AND", [makeCondition("c1", "status")]));
-    const newState = ungroupChildren(state, "nonexistent");
-    expect(newState).toBe(state);
-  });
-});
-
-describe("toggleConnector", () => {
-  it("groups two adjacent conditions into OR when toggling AND→OR", () => {
-    const c1 = createCondition("status", ["Blocked"]);
-    const c2 = createCondition("type", ["XSS"]);
-    let state = createEmptyState();
-    state = addCondition(state, c1);
-    state = addCondition(state, c2);
-
-    const newState = toggleConnector(state, 0);
-    expect(newState.expression.children).toHaveLength(1);
-    const group = newState.expression.children[0];
-    expect(isFilterGroup(group)).toBe(true);
-    if (isFilterGroup(group)) {
-      expect(group.connector).toBe("OR");
-    }
-  });
-
-  it("ungroups an OR group when toggling OR→AND", () => {
-    const c1 = makeCondition("c1", "status");
-    const c2 = makeCondition("c2", "type");
-    const c3 = makeCondition("c3", "impact");
-    const state = makeState(
-      makeGroup("root", "AND", [
-        makeGroup("g1", "OR", [c1, c2]),
-        c3,
-      ]),
-    );
-
-    // leftIndex=0 is the OR group → ungroup
-    const newState = toggleConnector(state, 0);
-    expect(newState.expression.children).toHaveLength(3);
-    expect(isFilterCondition(newState.expression.children[0])).toBe(true);
-    expect(isFilterCondition(newState.expression.children[1])).toBe(true);
-    expect(isFilterCondition(newState.expression.children[2])).toBe(true);
-  });
-
-  it("no-ops for out-of-bounds index", () => {
-    const c1 = createCondition("status", ["Blocked"]);
-    let state = createEmptyState();
-    state = addCondition(state, c1);
-
-    expect(toggleConnector(state, -1)).toBe(state);
-    expect(toggleConnector(state, 0)).toBe(state);
-    expect(toggleConnector(state, 5)).toBe(state);
-  });
-
-  it("no-ops when left is a group and right is a condition (prevents nesting)", () => {
-    const c1 = makeCondition("c1", "status");
-    const c2 = makeCondition("c2", "type");
-    const c3 = makeCondition("c3", "impact");
-    const state = makeState(
-      makeGroup("root", "AND", [
-        makeGroup("g1", "AND", [c1, c2]),
-        c3,
-      ]),
-    );
-
-    // g1 is an AND group (not OR), so toggleConnector won't ungroup it
-    // and left is a group + right is condition → no-op
-    const newState = toggleConnector(state, 0);
-    expect(newState).toBe(state);
-  });
-
-  it("handles toggle with 3 conditions: groups middle two", () => {
-    const c1 = createCondition("status", ["Blocked"]);
-    const c2 = createCondition("type", ["XSS"]);
-    const c3 = createCondition("impact", ["High"]);
-    let state = createEmptyState();
-    state = addCondition(state, c1);
-    state = addCondition(state, c2);
-    state = addCondition(state, c3);
-
-    // Toggle connector between c2 and c3 (index 1)
-    const newState = toggleConnector(state, 1);
-    expect(newState.expression.children).toHaveLength(2);
-    expect(isFilterCondition(newState.expression.children[0])).toBe(true);
-    expect(isFilterGroup(newState.expression.children[1])).toBe(true);
-  });
-});

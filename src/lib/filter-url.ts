@@ -11,8 +11,28 @@ import { sanitizeExpression } from "./filter-validation";
 const VALID_OPERATORS = new Set<FilterOperator>([
   "is",
   "is_not",
+  "is_set",
+  "is_not_set",
+  "is_any_of",
+  "is_none_of",
   "contains",
   "does_not_contain",
+  "starts_with",
+  "ends_with",
+  "equals",
+  "not_equals",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "in_between",
+  "before",
+  "after",
+  "on",
+  "not_on",
+  "in_the_last",
+  "not_in_the_last",
+  "between_dates",
 ]);
 
 const DEFAULT_OPERATOR: Record<string, FilterOperator> = {

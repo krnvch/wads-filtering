@@ -251,7 +251,7 @@ function makeCondition(
   id: string,
   field: string,
   values: string[],
-  operator: "is" | "is_not" | "contains" | "does_not_contain" = "is",
+  operator: FilterCondition["operator"] = "is",
 ): FilterCondition {
   return { id, field, fieldLabel: field, operator, values };
 }
@@ -267,6 +267,107 @@ function makeGroup(
 function makeState(expression: FilterGroup): FilterState {
   return { expression };
 }
+
+describe("serializeFilterState (is_any_of / is_none_of)", () => {
+  it("serializes is_any_of operator explicitly", () => {
+    let state = createEmptyState();
+    state = addCondition(
+      state,
+      createCondition("status", ["Blocked", "Monitored"], "is_any_of"),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("status")).toBe("Blocked,Monitored");
+    expect(params.get("status__op")).toBe("is_any_of");
+  });
+
+  it("serializes is_none_of operator explicitly", () => {
+    let state = createEmptyState();
+    state = addCondition(
+      state,
+      createCondition("status", ["Blocked"], "is_none_of"),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("status")).toBe("Blocked");
+    expect(params.get("status__op")).toBe("is_none_of");
+  });
+});
+
+describe("deserializeFilterState (is_any_of / is_none_of)", () => {
+  it("deserializes is_any_of operator", () => {
+    const params = new URLSearchParams("status=Blocked,Monitored&status__op=is_any_of");
+    const state = deserializeFilterState(params);
+
+    const child = state.expression.children[0];
+    expect("operator" in child && child.operator).toBe("is_any_of");
+    expect("values" in child && child.values).toEqual(["Blocked", "Monitored"]);
+  });
+
+  it("deserializes is_none_of operator", () => {
+    const params = new URLSearchParams("status=Blocked&status__op=is_none_of");
+    const state = deserializeFilterState(params);
+
+    const child = state.expression.children[0];
+    expect("operator" in child && child.operator).toBe("is_none_of");
+  });
+});
+
+describe("round-trip (is_any_of / is_none_of)", () => {
+  it("round-trips is_any_of with multiple values", () => {
+    let original = createEmptyState();
+    original = addCondition(
+      original,
+      createCondition("status", ["Blocked", "Monitored"], "is_any_of"),
+    );
+
+    const params = serializeFilterState(original);
+    const restored = deserializeFilterState(params);
+
+    const child = restored.expression.children[0];
+    expect("operator" in child && child.operator).toBe("is_any_of");
+    expect("values" in child && child.values).toEqual(["Blocked", "Monitored"]);
+  });
+
+  it("round-trips is_none_of", () => {
+    let original = createEmptyState();
+    original = addCondition(
+      original,
+      createCondition("impact", ["High", "Medium"], "is_none_of"),
+    );
+
+    const params = serializeFilterState(original);
+    const restored = deserializeFilterState(params);
+
+    const child = restored.expression.children[0];
+    expect("operator" in child && child.operator).toBe("is_none_of");
+  });
+
+  it("backwards compat: old URLs with is + multi-values still work", () => {
+    const params = new URLSearchParams("status=Blocked,Monitored");
+    const state = deserializeFilterState(params);
+
+    const child = state.expression.children[0];
+    // Default operator for enum is "is" — still works, engine treats is and is_any_of identically
+    expect("operator" in child && child.operator).toBe("is");
+    expect("values" in child && child.values).toEqual(["Blocked", "Monitored"]);
+  });
+
+  it("serializes is_any_of inside a group", () => {
+    const state = makeState(
+      makeGroup("root", "AND", [
+        makeGroup("g1", "OR", [
+          makeCondition("c1", "status", ["Blocked", "Monitored"], "is_any_of"),
+          makeCondition("c2", "type", ["XSS"]),
+        ]),
+      ]),
+    );
+
+    const params = serializeFilterState(state);
+    expect(params.get("g1.status")).toBe("Blocked,Monitored");
+    expect(params.get("g1.status__op")).toBe("is_any_of");
+  });
+});
 
 describe("serializeFilterState (groups)", () => {
   it("serializes a single OR group", () => {

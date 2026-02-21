@@ -7,6 +7,7 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "Attack type",
     category: "Attack characteristics",
     type: "enum",
+    operators: ["is", "is_not", "is_any_of", "is_none_of", "is_set", "is_not_set"],
     values: [
       "XSS",
       "SQL Injection",
@@ -35,6 +36,7 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "Status",
     category: "Attack characteristics",
     type: "enum",
+    operators: ["is", "is_not", "is_any_of", "is_none_of", "is_set", "is_not_set"],
     values: ["Blocked", "Monitored", "Started"],
   },
   {
@@ -42,6 +44,7 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "Blocking status",
     category: "Attack characteristics",
     type: "enum",
+    operators: ["is", "is_not", "is_any_of", "is_none_of", "is_set", "is_not_set"],
     values: ["Active blocking", "Passive monitoring", "Not configured"],
   },
   {
@@ -49,6 +52,7 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "HTTP status code",
     category: "Attack characteristics",
     type: "enum",
+    operators: ["is", "is_not", "is_any_of", "is_none_of", "is_set", "is_not_set"],
     values: ["200", "401", "403", "404", "500"],
   },
   {
@@ -56,6 +60,7 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "Impact",
     category: "Attack characteristics",
     type: "enum",
+    operators: ["is", "is_not", "is_any_of", "is_none_of", "is_set", "is_not_set"],
     values: ["High", "Medium", "Low"],
   },
   // Target & Context
@@ -64,18 +69,43 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "Endpoint",
     category: "Target & Context",
     type: "text",
+    operators: ["is", "is_not", "contains", "does_not_contain", "starts_with", "ends_with", "is_set", "is_not_set"],
   },
   {
     key: "host",
     label: "Hostname",
     category: "Target & Context",
     type: "text",
+    operators: ["is", "is_not", "contains", "does_not_contain", "starts_with", "ends_with", "is_set", "is_not_set"],
   },
   {
     key: "parameter",
     label: "Parameter",
     category: "Target & Context",
     type: "text",
+    operators: ["is", "is_not", "contains", "does_not_contain", "starts_with", "ends_with", "is_set", "is_not_set"],
+  },
+  // Temporal
+  {
+    key: "timeline.last_seen",
+    label: "Last seen",
+    category: "Temporal",
+    type: "date",
+    operators: ["in_the_last", "not_in_the_last", "before", "after", "on", "not_on", "between_dates", "is_set", "is_not_set"],
+  },
+  {
+    key: "timeline.first_detected",
+    label: "First detected",
+    category: "Temporal",
+    type: "date",
+    operators: ["in_the_last", "not_in_the_last", "before", "after", "on", "not_on", "between_dates", "is_set", "is_not_set"],
+  },
+  {
+    key: "response_code",
+    label: "Response code",
+    category: "Attack characteristics",
+    type: "numeric",
+    operators: ["equals", "not_equals", "gt", "gte", "lt", "lte", "in_between", "is_set", "is_not_set"],
   },
 ];
 
@@ -95,4 +125,12 @@ export function getEnumFields(): FilterFieldDef[] {
 
 export function getTextFields(): FilterFieldDef[] {
   return FILTER_FIELDS.filter((f) => f.type === "text");
+}
+
+export function getDateFields(): FilterFieldDef[] {
+  return FILTER_FIELDS.filter((f) => f.type === "date");
+}
+
+export function getNumericFields(): FilterFieldDef[] {
+  return FILTER_FIELDS.filter((f) => f.type === "numeric");
 }

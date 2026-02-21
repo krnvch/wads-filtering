@@ -65,7 +65,7 @@ describe("FilterChip", () => {
     expect(screen.getByText("is not")).toBeInTheDocument();
   });
 
-  it("joins multiple values with 'or' when 2 values", () => {
+  it("joins multiple values with commas", () => {
     const condition = makeCondition({ values: ["Blocked", "Monitored"] });
     render(
       <FilterChip
@@ -77,7 +77,7 @@ describe("FilterChip", () => {
       />,
     );
 
-    expect(screen.getByText("Blocked or Monitored")).toBeInTheDocument();
+    expect(screen.getByText("Blocked, Monitored")).toBeInTheDocument();
   });
 
   it("joins 3+ values with commas", () => {
@@ -157,8 +157,8 @@ describe("FilterChip", () => {
     await user.click(screen.getByLabelText("Change Status operator"));
 
     expect(screen.getByText("is not")).toBeInTheDocument();
-    expect(screen.getByText("contains")).toBeInTheDocument();
-    expect(screen.getByText("does not contain")).toBeInTheDocument();
+    expect(screen.getByText("is any of")).toBeInTheDocument();
+    expect(screen.getByText("is not any of")).toBeInTheDocument();
   });
 
   it("calls onUpdateOperator when a different operator is selected", async () => {
@@ -214,7 +214,7 @@ describe("FilterChip", () => {
     expect(chip).toHaveAttribute("data-filter-id", "test-123");
   });
 
-  it("has descriptive aria-label", () => {
+  it("has descriptive aria-label with comma-separated values", () => {
     const condition = makeCondition({
       values: ["Blocked", "Monitored"],
       operator: "is_not",
@@ -232,7 +232,7 @@ describe("FilterChip", () => {
     const chip = screen.getByRole("listitem");
     expect(chip).toHaveAttribute(
       "aria-label",
-      "Status is not Blocked or Monitored",
+      "Status is not Blocked, Monitored",
     );
   });
 
@@ -315,6 +315,44 @@ describe("FilterChip", () => {
     );
 
     expect(screen.getByRole("listitem")).toBeInTheDocument();
+  });
+
+  it("displays is_any_of operator as 'is any of'", () => {
+    const condition = makeCondition({
+      operator: "is_any_of",
+      values: ["Blocked", "Monitored"],
+    });
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("is any of")).toBeInTheDocument();
+    expect(screen.getByText("Blocked, Monitored")).toBeInTheDocument();
+  });
+
+  it("displays is_none_of operator as 'is not any of'", () => {
+    const condition = makeCondition({
+      operator: "is_none_of",
+      values: ["Blocked", "Monitored"],
+    });
+    render(
+      <FilterChip
+        condition={condition}
+        fieldDef={statusField}
+        onRemove={vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("is not any of")).toBeInTheDocument();
+    expect(screen.getByText("Blocked, Monitored")).toBeInTheDocument();
   });
 
   it("renders TextValueInput for text field type", async () => {

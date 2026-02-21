@@ -18,7 +18,7 @@ interface TextValueInputProps {
   fieldDef: FilterFieldDef;
   selectedValues: string[];
   onSelectionChange: (values: string[]) => void;
-  onConfirm: () => void;
+  onConfirm: (overrideValues?: string[]) => void;
   suggestions?: string[];
   children: React.ReactNode;
 }
@@ -67,10 +67,13 @@ export function TextValueInput({
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
+        const newValues = inputValue.trim()
+          ? [...selectedValues.filter((v) => v !== inputValue.trim()), inputValue.trim()]
+          : selectedValues;
         if (inputValue.trim()) {
           addValue(inputValue);
         }
-        onConfirm();
+        onConfirm(newValues);
         return;
       }
 

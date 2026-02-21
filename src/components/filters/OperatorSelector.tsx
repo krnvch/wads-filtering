@@ -4,9 +4,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { FilterFieldType, FilterOperator } from "@/types/filters";
+import { OPERATORS_BY_FIELD_TYPE, OPERATOR_LABELS } from "@/types/tokens";
+import type { TokenFilterFieldType, TokenFilterOperator } from "@/types/tokens";
 
 interface OperatorSelectorProps {
   currentOperator: FilterOperator;
@@ -15,33 +18,53 @@ interface OperatorSelectorProps {
   children: React.ReactNode;
 }
 
-const OPERATORS: { value: FilterOperator; label: string }[] = [
-  { value: "is", label: "is" },
-  { value: "is_not", label: "is not" },
-  { value: "contains", label: "contains" },
-  { value: "does_not_contain", label: "does not contain" },
-];
-
 export function OperatorSelector({
   currentOperator,
   fieldType,
   onSelect,
   children,
 }: OperatorSelectorProps) {
+  const config = OPERATORS_BY_FIELD_TYPE[fieldType as TokenFilterFieldType];
+
+  if (!config) {
+    // Fallback for unknown field types
+    return <>{children}</>;
+  }
+
+  const { primary, advanced } = config;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {OPERATORS.map((op) => (
+        {primary.map((op) => (
           <DropdownMenuCheckboxItem
-            key={op.value}
-            checked={currentOperator === op.value}
-            onCheckedChange={() => onSelect(op.value)}
+            key={op}
+            checked={currentOperator === op}
+            onCheckedChange={() => onSelect(op as FilterOperator)}
           >
-            {op.label}
+            {getOperatorLabel(op)}
           </DropdownMenuCheckboxItem>
         ))}
+        {advanced.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            {advanced.map((op) => (
+              <DropdownMenuCheckboxItem
+                key={op}
+                checked={currentOperator === op}
+                onCheckedChange={() => onSelect(op as FilterOperator)}
+              >
+                {getOperatorLabel(op)}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function getOperatorLabel(op: TokenFilterOperator): string {
+  return OPERATOR_LABELS[op] ?? op.replace(/_/g, " ");
 }

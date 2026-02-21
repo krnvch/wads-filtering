@@ -5,12 +5,16 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EnumValueSelector } from "./EnumValueSelector";
 import { TextValueInput } from "./TextValueInput";
+import { DateValueSelector } from "./DateValueSelector";
+import { NumericValueInput } from "./NumericValueInput";
 import { OperatorSelector } from "./OperatorSelector";
 import type {
   FilterCondition,
   FilterFieldDef,
   FilterOperator,
 } from "@/types/filters";
+import { OPERATOR_LABELS } from "@/types/tokens";
+import type { TokenFilterOperator } from "@/types/tokens";
 import { cn } from "@/lib/utils";
 
 interface FilterChipProps {
@@ -24,13 +28,10 @@ interface FilterChipProps {
 }
 
 function formatOperator(operator: string): string {
-  return operator.replace(/_/g, " ");
+  return OPERATOR_LABELS[operator as TokenFilterOperator] ?? operator.replace(/_/g, " ");
 }
 
 function formatValues(values: string[]): string {
-  if (values.length <= 2) {
-    return values.join(" or ");
-  }
   return values.join(", ");
 }
 
@@ -61,12 +62,16 @@ export function FilterChip({
     [condition.id, condition.values, pendingValues, onUpdateValues],
   );
 
-  const handleConfirm = useCallback(() => {
-    setValuePopoverOpen(false);
-    if (pendingValues.length > 0) {
-      onUpdateValues(condition.id, pendingValues);
-    }
-  }, [condition.id, pendingValues, onUpdateValues]);
+  const handleConfirm = useCallback(
+    (overrideValues?: string[]) => {
+      setValuePopoverOpen(false);
+      const vals = overrideValues ?? pendingValues;
+      if (vals.length > 0) {
+        onUpdateValues(condition.id, vals);
+      }
+    },
+    [condition.id, pendingValues, onUpdateValues],
+  );
 
   const handleOperatorSelect = useCallback(
     (operator: FilterOperator) => {
@@ -86,45 +91,78 @@ export function FilterChip({
     [condition.id, onRemove],
   );
 
-  const ariaLabel = `${condition.fieldLabel} ${formatOperator(condition.operator)} ${condition.values.join(" or ")}`;
+  const ariaLabel = `${condition.fieldLabel} ${formatOperator(condition.operator)} ${condition.values.join(", ")}`;
 
-  const valueEditor =
-    fieldDef.type === "text" ? (
-      <TextValueInput
-        open={valuePopoverOpen}
-        onOpenChange={handleOpenChange}
-        fieldDef={fieldDef}
-        selectedValues={pendingValues}
-        onSelectionChange={setPendingValues}
-        onConfirm={handleConfirm}
-        suggestions={suggestions}
-      >
-        <button
-          type="button"
-          className="cursor-pointer text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-          aria-label={`Edit ${condition.fieldLabel} values`}
+  const valueTrigger = (
+    <button
+      type="button"
+      className="cursor-pointer text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+      aria-label={`Edit ${condition.fieldLabel} values`}
+    >
+      {formatValues(condition.values)}
+    </button>
+  );
+
+  let valueEditor: React.ReactNode;
+  switch (fieldDef.type) {
+    case "text":
+      valueEditor = (
+        <TextValueInput
+          open={valuePopoverOpen}
+          onOpenChange={handleOpenChange}
+          fieldDef={fieldDef}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={handleConfirm}
+          suggestions={suggestions}
         >
-          {formatValues(condition.values)}
-        </button>
-      </TextValueInput>
-    ) : (
-      <EnumValueSelector
-        open={valuePopoverOpen}
-        onOpenChange={handleOpenChange}
-        fieldDef={fieldDef}
-        selectedValues={pendingValues}
-        onSelectionChange={setPendingValues}
-        onConfirm={handleConfirm}
-      >
-        <button
-          type="button"
-          className="cursor-pointer text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-          aria-label={`Edit ${condition.fieldLabel} values`}
+          {valueTrigger}
+        </TextValueInput>
+      );
+      break;
+    case "date":
+      valueEditor = (
+        <DateValueSelector
+          open={valuePopoverOpen}
+          onOpenChange={handleOpenChange}
+          operator={condition.operator as TokenFilterOperator}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={handleConfirm}
         >
-          {formatValues(condition.values)}
-        </button>
-      </EnumValueSelector>
-    );
+          {valueTrigger}
+        </DateValueSelector>
+      );
+      break;
+    case "numeric":
+      valueEditor = (
+        <NumericValueInput
+          open={valuePopoverOpen}
+          onOpenChange={handleOpenChange}
+          operator={condition.operator as TokenFilterOperator}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={handleConfirm}
+        >
+          {valueTrigger}
+        </NumericValueInput>
+      );
+      break;
+    default:
+      valueEditor = (
+        <EnumValueSelector
+          open={valuePopoverOpen}
+          onOpenChange={handleOpenChange}
+          fieldDef={fieldDef}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={handleConfirm}
+        >
+          {valueTrigger}
+        </EnumValueSelector>
+      );
+      break;
+  }
 
   return (
     <Badge

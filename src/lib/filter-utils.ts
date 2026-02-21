@@ -7,6 +7,17 @@ import type {
 import { isFilterCondition, isFilterGroup } from "@/types/filters";
 import { getFieldByKey } from "./filter-schema";
 
+export function autoUpgradeOperator(operator: FilterOperator, valueCount: number): FilterOperator {
+  if (valueCount <= 1) {
+    if (operator === "is_any_of") return "is";
+    if (operator === "is_none_of") return "is_not";
+  } else {
+    if (operator === "is") return "is_any_of";
+    if (operator === "is_not") return "is_none_of";
+  }
+  return operator;
+}
+
 export function generateFilterId(): string {
   return crypto.randomUUID();
 }
@@ -98,7 +109,11 @@ function updateValuesInGroup(
     ...group,
     children: group.children.map((child) => {
       if (isFilterCondition(child)) {
-        return child.id === conditionId ? { ...child, values } : child;
+        if (child.id === conditionId) {
+          const newOp = autoUpgradeOperator(child.operator, values.length);
+          return { ...child, values, operator: newOp };
+        }
+        return child;
       }
       return updateValuesInGroup(child, conditionId, values);
     }),
@@ -159,110 +174,3 @@ export function updateConditionOperator(
   };
 }
 
-// --- Group operations ---
-
-/**
- * Wrap two adjacent root-level conditions into an OR group.
- * Inserts the group at the position of the first condition.
- */
-export function createGroup(
-  state: FilterState,
-  conditionId1: string,
-  conditionId2: string,
-): FilterState {
-  const children = state.expression.children;
-  const idx1 = children.findIndex(
-    (c) => isFilterCondition(c) && c.id === conditionId1,
-  );
-  const idx2 = children.findIndex(
-    (c) => isFilterCondition(c) && c.id === conditionId2,
-  );
-
-  if (idx1 === -1 || idx2 === -1) return state;
-
-  const c1 = children[idx1];
-  const c2 = children[idx2];
-
-  const group: FilterGroup = {
-    id: generateFilterId(),
-    connector: "OR",
-    children: [c1, c2],
-  };
-
-  const minIdx = Math.min(idx1, idx2);
-  const maxIdx = Math.max(idx1, idx2);
-
-  const newChildren = [
-    ...children.slice(0, minIdx),
-    group,
-    ...children.slice(minIdx + 1, maxIdx),
-    ...children.slice(maxIdx + 1),
-  ];
-
-  return {
-    expression: { ...state.expression, children: newChildren },
-  };
-}
-
-/**
- * Promote all children of a group to the root level at the group's position.
- */
-export function ungroupChildren(
-  state: FilterState,
-  groupId: string,
-): FilterState {
-  const children = state.expression.children;
-  const idx = children.findIndex(
-    (c) => isFilterGroup(c) && c.id === groupId,
-  );
-
-  if (idx === -1) return state;
-
-  const group = children[idx] as FilterGroup;
-
-  const newChildren = [
-    ...children.slice(0, idx),
-    ...group.children,
-    ...children.slice(idx + 1),
-  ];
-
-  return {
-    expression: { ...state.expression, children: newChildren },
-  };
-}
-
-/**
- * Toggle the connector between two adjacent root-level children.
- *
- * - If both children[leftIndex] and children[leftIndex+1] are conditions:
- *   wrap them into an OR group (createGroup).
- * - If children[leftIndex] is an OR group:
- *   ungroup its children (ungroupChildren), effectively toggling OR→AND.
- */
-export function toggleConnector(
-  state: FilterState,
-  leftIndex: number,
-): FilterState {
-  const children = state.expression.children;
-
-  if (leftIndex < 0 || leftIndex >= children.length) return state;
-
-  const left = children[leftIndex];
-
-  // If left is an OR group, ungroup it (OR→AND toggle) — works even as sole child
-  if (isFilterGroup(left) && left.connector === "OR") {
-    return ungroupChildren(state, left.id);
-  }
-
-  // For creating new groups, we need a right neighbor
-  if (leftIndex >= children.length - 1) return state;
-
-  const right = children[leftIndex + 1];
-
-  // If both are conditions, group them into OR
-  if (isFilterCondition(left) && isFilterCondition(right)) {
-    return createGroup(state, left.id, right.id);
-  }
-
-  return state;
-}

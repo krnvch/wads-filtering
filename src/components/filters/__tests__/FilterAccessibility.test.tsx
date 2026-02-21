@@ -1,74 +1,100 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FilterBar } from "../FilterBar";
-import type { FilterState, FilterCondition, FilterGroup } from "@/types/filters";
-import { createEmptyState, createCondition, addCondition } from "@/lib/filter-utils";
+import type { Token, FilterChipToken, AndToken } from "@/types/tokens";
+import type { TokenFilterOperator } from "@/types/tokens";
+import type { FilterGroup } from "@/types/filters";
+import { tokensToExpressionTree } from "@/lib/token-parser";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useFilterUIStore } from "@/stores/filter-ui-store";
 
-function makeStateWith(
-  ...filters: Array<{ field: string; values: string[]; id?: string }>
-): FilterState {
-  let state = createEmptyState();
-  for (const f of filters) {
-    const c = createCondition(f.field, f.values);
-    if (f.id) {
-      (c as FilterCondition).id = f.id;
-    }
-    state = addCondition(state, c);
+let _idCounter = 0;
+function uid(): string {
+  return `acc-${++_idCounter}`;
+}
+
+function makeChip(overrides: Partial<FilterChipToken> = {}): FilterChipToken {
+  return {
+    type: "filter_chip",
+    id: uid(),
+    field: "status",
+    fieldLabel: "Status",
+    operator: "is",
+    values: ["Blocked"],
+    ...overrides,
+  };
+}
+
+function makeAnd(): AndToken {
+  return { type: "and", id: uid() };
+}
+
+function deriveTree(tokens: Token[]): FilterGroup {
+  if (tokens.filter((t) => t.type === "filter_chip").length === 0) {
+    return { id: "root", connector: "AND", children: [] };
   }
-  return state;
+  return tokensToExpressionTree(tokens);
 }
 
 function renderFilterBar(props: {
-  filterState?: FilterState;
+  tokens?: Token[];
   onAddFilter?: ReturnType<typeof vi.fn>;
-  onRemoveFilter?: ReturnType<typeof vi.fn>;
+  onRemoveToken?: ReturnType<typeof vi.fn>;
   onClearAll?: ReturnType<typeof vi.fn>;
   resultCount?: number;
 }) {
+  const tokens = props.tokens ?? [];
+  const chipCount = tokens.filter((t) => t.type === "filter_chip").length;
   return render(
-    <FilterBar
-      filterState={props.filterState ?? createEmptyState()}
-      onAddFilter={props.onAddFilter ?? vi.fn()}
-      onRemoveFilter={props.onRemoveFilter ?? vi.fn()}
-      onUpdateFilterValues={vi.fn()}
-      onUpdateOperator={vi.fn()}
-      onClearAll={props.onClearAll ?? vi.fn()}
-      resultCount={props.resultCount}
-    />,
+    <TooltipProvider>
+      <FilterBar
+        tokens={tokens}
+        expressionTree={deriveTree(tokens)}
+        hasErrors={false}
+        chipCount={chipCount}
+        onAddFilter={props.onAddFilter ?? vi.fn()}
+        onRemoveToken={props.onRemoveToken ?? vi.fn()}
+        onUpdateValues={vi.fn()}
+        onUpdateOperator={vi.fn()}
+        onToggleConnector={vi.fn()}
+        onInsertParen={vi.fn()}
+        onClearAll={props.onClearAll ?? vi.fn()}
+        resultCount={props.resultCount}
+      />
+    </TooltipProvider>,
   );
 }
 
 // --- Global shortcuts ---
 
 describe("FilterAccessibility: Global shortcuts", () => {
+  beforeEach(() => {
+    _idCounter = 0;
+    useFilterUIStore.getState().clearRecentFilters();
+  });
+
   it("press F on body opens palette", async () => {
     const user = userEvent.setup();
-
     renderFilterBar({});
 
     document.body.focus();
     await user.keyboard("f");
 
-    // Palette should show field options
     expect(screen.getByText("Attack type")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
   });
 
   it("press F inside input does NOT open palette", async () => {
     const user = userEvent.setup();
-
     renderFilterBar({});
 
-    // Create an input and focus it
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
 
     await user.keyboard("f");
 
-    // Palette should NOT show
     expect(screen.queryByText("Attack type")).not.toBeInTheDocument();
 
     document.body.removeChild(input);
@@ -77,9 +103,8 @@ describe("FilterAccessibility: Global shortcuts", () => {
   it("press Shift+F with filters clears all", async () => {
     const user = userEvent.setup();
     const onClearAll = vi.fn();
-    const state = makeStateWith({ field: "status", values: ["Blocked"] });
-
-    renderFilterBar({ filterState: state, onClearAll });
+    const tokens: Token[] = [makeChip()];
+    renderFilterBar({ tokens, onClearAll });
 
     document.body.focus();
     await user.keyboard("{Shift>}f{/Shift}");
@@ -89,17 +114,13 @@ describe("FilterAccessibility: Global shortcuts", () => {
 
   it("press Escape while palette open closes it", async () => {
     const user = userEvent.setup();
-
     renderFilterBar({});
 
-    // Open palette
     await user.click(screen.getByLabelText("Add filter"));
     expect(screen.getByText("Attack type")).toBeInTheDocument();
 
-    // Press Escape
     await user.keyboard("{Escape}");
 
-    // Palette should be closed (no field options visible)
     expect(screen.queryByText("Attack type")).not.toBeInTheDocument();
   });
 });
@@ -107,73 +128,71 @@ describe("FilterAccessibility: Global shortcuts", () => {
 // --- Chip keyboard deletion ---
 
 describe("FilterAccessibility: Chip keyboard deletion", () => {
-  it("tab to chip gives it focus", async () => {
-    const user = userEvent.setup();
-    const state = makeStateWith({ field: "status", values: ["Blocked"] });
+  beforeEach(() => {
+    _idCounter = 0;
+  });
 
-    renderFilterBar({ filterState: state });
+  it("tab to chip gives it focus", () => {
+    const tokens: Token[] = [makeChip()];
+    renderFilterBar({ tokens });
 
-    // Tab into the filter bar area
     const chip = screen.getByRole("listitem");
     chip.focus();
 
     expect(document.activeElement).toBe(chip);
   });
 
-  it("Backspace on focused chip calls onRemoveFilter", async () => {
+  it("Backspace on focused chip calls onRemoveToken", async () => {
     const user = userEvent.setup();
-    const onRemoveFilter = vi.fn();
-    const state = makeStateWith({ field: "status", values: ["Blocked"] });
-
-    renderFilterBar({ filterState: state, onRemoveFilter });
+    const onRemoveToken = vi.fn();
+    const tokens: Token[] = [makeChip()];
+    renderFilterBar({ tokens, onRemoveToken });
 
     const chip = screen.getByRole("listitem");
     chip.focus();
     await user.keyboard("{Backspace}");
 
-    expect(onRemoveFilter).toHaveBeenCalled();
+    expect(onRemoveToken).toHaveBeenCalled();
   });
 
-  it("Delete on focused chip calls onRemoveFilter", async () => {
+  it("Delete on focused chip calls onRemoveToken", async () => {
     const user = userEvent.setup();
-    const onRemoveFilter = vi.fn();
-    const state = makeStateWith({ field: "status", values: ["Blocked"] });
-
-    renderFilterBar({ filterState: state, onRemoveFilter });
+    const onRemoveToken = vi.fn();
+    const tokens: Token[] = [makeChip()];
+    renderFilterBar({ tokens, onRemoveToken });
 
     const chip = screen.getByRole("listitem");
     chip.focus();
     await user.keyboard("{Delete}");
 
-    expect(onRemoveFilter).toHaveBeenCalled();
+    expect(onRemoveToken).toHaveBeenCalled();
   });
 });
 
 // --- ARIA structure ---
 
 describe("FilterAccessibility: ARIA structure", () => {
+  beforeEach(() => {
+    _idCounter = 0;
+  });
+
   it("outer wrapper has role='search'", () => {
     renderFilterBar({});
-
     expect(screen.getByRole("search")).toBeInTheDocument();
   });
 
   it("inner bar has role='toolbar'", () => {
     renderFilterBar({});
-
     expect(screen.getByRole("toolbar")).toBeInTheDocument();
   });
 
   it("chips have role='listitem'", () => {
-    const state = makeStateWith({ field: "status", values: ["Blocked"] });
-    renderFilterBar({ filterState: state });
-
+    renderFilterBar({ tokens: [makeChip()] });
     expect(screen.getByRole("listitem")).toBeInTheDocument();
   });
 
   it("chips have descriptive aria-label", () => {
-    const state = makeStateWith({ field: "status", values: ["Blocked"] });
-    renderFilterBar({ filterState: state });
+    renderFilterBar({ tokens: [makeChip()] });
 
     const chip = screen.getByRole("listitem");
     expect(chip.getAttribute("aria-label")).toContain("Status");
@@ -199,29 +218,43 @@ describe("FilterAccessibility: ARIA structure", () => {
   });
 
   it("announcer updates on filter add", () => {
-    const emptyState = createEmptyState();
-    const stateWith = makeStateWith({ field: "status", values: ["Blocked"] });
+    const emptyTokens: Token[] = [];
+    const tokensWithChip: Token[] = [makeChip()];
 
     const { rerender } = render(
-      <FilterBar
-        filterState={emptyState}
-        onAddFilter={vi.fn()}
-        onRemoveFilter={vi.fn()}
-        onUpdateFilterValues={vi.fn()}
-        onUpdateOperator={vi.fn()}
-        onClearAll={vi.fn()}
-      />,
+      <TooltipProvider>
+        <FilterBar
+          tokens={emptyTokens}
+          expressionTree={{ id: "root", connector: "AND", children: [] }}
+          hasErrors={false}
+          chipCount={0}
+          onAddFilter={vi.fn()}
+          onRemoveToken={vi.fn()}
+          onUpdateValues={vi.fn()}
+          onUpdateOperator={vi.fn()}
+          onToggleConnector={vi.fn()}
+          onInsertParen={vi.fn()}
+          onClearAll={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     rerender(
-      <FilterBar
-        filterState={stateWith}
-        onAddFilter={vi.fn()}
-        onRemoveFilter={vi.fn()}
-        onUpdateFilterValues={vi.fn()}
-        onUpdateOperator={vi.fn()}
-        onClearAll={vi.fn()}
-      />,
+      <TooltipProvider>
+        <FilterBar
+          tokens={tokensWithChip}
+          expressionTree={deriveTree(tokensWithChip)}
+          hasErrors={false}
+          chipCount={1}
+          onAddFilter={vi.fn()}
+          onRemoveToken={vi.fn()}
+          onUpdateValues={vi.fn()}
+          onUpdateOperator={vi.fn()}
+          onToggleConnector={vi.fn()}
+          onInsertParen={vi.fn()}
+          onClearAll={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     const status = screen.getByRole("status");
@@ -229,32 +262,45 @@ describe("FilterAccessibility: ARIA structure", () => {
   });
 
   it("announcer updates on filter remove", () => {
-    const stateWith2 = makeStateWith(
-      { field: "status", values: ["Blocked"] },
-      { field: "type", values: ["XSS"] },
-    );
-    const stateWith1 = makeStateWith({ field: "status", values: ["Blocked"] });
+    const chip1 = makeChip();
+    const chip2 = makeChip({ field: "type", fieldLabel: "Attack type", values: ["XSS"] });
+    const twoChipTokens: Token[] = [chip1, makeAnd(), chip2];
+    const oneChipTokens: Token[] = [chip1];
 
     const { rerender } = render(
-      <FilterBar
-        filterState={stateWith2}
-        onAddFilter={vi.fn()}
-        onRemoveFilter={vi.fn()}
-        onUpdateFilterValues={vi.fn()}
-        onUpdateOperator={vi.fn()}
-        onClearAll={vi.fn()}
-      />,
+      <TooltipProvider>
+        <FilterBar
+          tokens={twoChipTokens}
+          expressionTree={deriveTree(twoChipTokens)}
+          hasErrors={false}
+          chipCount={2}
+          onAddFilter={vi.fn()}
+          onRemoveToken={vi.fn()}
+          onUpdateValues={vi.fn()}
+          onUpdateOperator={vi.fn()}
+          onToggleConnector={vi.fn()}
+          onInsertParen={vi.fn()}
+          onClearAll={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     rerender(
-      <FilterBar
-        filterState={stateWith1}
-        onAddFilter={vi.fn()}
-        onRemoveFilter={vi.fn()}
-        onUpdateFilterValues={vi.fn()}
-        onUpdateOperator={vi.fn()}
-        onClearAll={vi.fn()}
-      />,
+      <TooltipProvider>
+        <FilterBar
+          tokens={oneChipTokens}
+          expressionTree={deriveTree(oneChipTokens)}
+          hasErrors={false}
+          chipCount={1}
+          onAddFilter={vi.fn()}
+          onRemoveToken={vi.fn()}
+          onUpdateValues={vi.fn()}
+          onUpdateOperator={vi.fn()}
+          onToggleConnector={vi.fn()}
+          onInsertParen={vi.fn()}
+          onClearAll={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     const status = screen.getByRole("status");
@@ -262,9 +308,8 @@ describe("FilterAccessibility: ARIA structure", () => {
   });
 
   it("announcer shows zero results assertively", () => {
-    const stateWith = makeStateWith({ field: "status", values: ["Blocked"] });
-
-    renderFilterBar({ filterState: stateWith, resultCount: 0 });
+    const tokens: Token[] = [makeChip()];
+    renderFilterBar({ tokens, resultCount: 0 });
 
     const alerts = screen.getAllByRole("alert");
     const assertive = alerts.find(
