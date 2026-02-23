@@ -17,6 +17,10 @@ import {
 import { FILTER_FIELDS } from "@/lib/filter-schema";
 import type { FilterFieldDef } from "@/types/filters";
 import type { RecentFilter } from "@/stores/filter-ui-store";
+import {
+  generateSuggestions,
+  type FilterSuggestion,
+} from "@/lib/filter-suggestions";
 
 interface FilterPaletteProps {
   open: boolean;
@@ -50,14 +54,25 @@ function RecentLabel({ recent }: { recent: RecentFilter }) {
   );
 }
 
+function SuggestionLabel({ suggestion }: { suggestion: FilterSuggestion }) {
+  return (
+    <span className="truncate">
+      {suggestion.fieldLabel}{" "}
+      <span className="text-muted-foreground">{suggestion.operatorLabel}</span>{" "}
+      <span className="text-blue-600 dark:text-blue-400">{suggestion.values.join(", ")}</span>
+    </span>
+  );
+}
+
 /** Stable content-based ID for recent items (avoids index-based key issues with cmdk) */
 function recentItemId(r: RecentFilter): string {
   return `recent:${r.field}|${r.operator}|${r.values.join(",")}`;
 }
 
-/** Each palette row is either a recent filter or a field def */
+/** Each palette row is a recent filter, a suggestion, or a field def */
 type PaletteItem =
   | { kind: "recent"; recent: RecentFilter; id: string }
+  | { kind: "suggestion"; suggestion: FilterSuggestion; id: string }
   | { kind: "field"; field: FilterFieldDef; id: string };
 
 export function FilterPalette({
@@ -78,6 +93,7 @@ export function FilterPalette({
   );
 
   type RecentPaletteItem = Extract<PaletteItem, { kind: "recent" }>;
+  type SuggestionPaletteItem = Extract<PaletteItem, { kind: "suggestion" }>;
   type FieldPaletteItem = Extract<PaletteItem, { kind: "field" }>;
 
   // Build recent items only when not searching
@@ -90,6 +106,16 @@ export function FilterPalette({
     }));
   }, [recentFilters, search]);
 
+  // Build suggestion items only when searching
+  const suggestionItems = useMemo((): SuggestionPaletteItem[] => {
+    if (!search) return [];
+    return generateSuggestions(filteredFields, search).map((s) => ({
+      kind: "suggestion" as const,
+      suggestion: s,
+      id: `suggestion:${s.field}|${s.operator}|${s.values.join(",")}`.toLowerCase(),
+    }));
+  }, [filteredFields, search]);
+
   const fieldItems = useMemo((): FieldPaletteItem[] => {
     return filteredFields.map((f) => ({
       kind: "field" as const,
@@ -100,8 +126,8 @@ export function FilterPalette({
 
   // Combined flat list for keyboard navigation
   const allItems = useMemo(
-    () => [...recentItems, ...fieldItems],
-    [recentItems, fieldItems],
+    () => [...recentItems, ...suggestionItems, ...fieldItems],
+    [recentItems, suggestionItems, fieldItems],
   );
 
   const hasResults = allItems.length > 0;
@@ -127,6 +153,8 @@ export function FilterPalette({
     (item: PaletteItem) => {
       if (item.kind === "recent" && onApplyRecent) {
         onApplyRecent(item.recent);
+      } else if (item.kind === "suggestion" && onApplyRecent) {
+        onApplyRecent({ ...item.suggestion, usedAt: Date.now() });
       } else if (item.kind === "field") {
         onSelectField(item.field);
       }
@@ -201,6 +229,22 @@ export function FilterPalette({
                       onSelect={() => handleSelect(item)}
                     >
                       <RecentLabel recent={item.recent} />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            )}
+            {suggestionItems.length > 0 && (
+              <>
+                <CommandGroup heading="Suggestions">
+                  {suggestionItems.map((item) => (
+                    <CommandItem
+                      key={item.id}
+                      value={item.id}
+                      onSelect={() => handleSelect(item)}
+                    >
+                      <SuggestionLabel suggestion={item.suggestion} />
                     </CommandItem>
                   ))}
                 </CommandGroup>

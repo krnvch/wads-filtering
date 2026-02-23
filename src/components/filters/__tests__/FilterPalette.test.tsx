@@ -222,9 +222,147 @@ describe("FilterPalette", () => {
       </FilterPalette>,
     );
 
-    expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("Blocking status")).toBeInTheDocument();
+    // "Status" may appear in both suggestions and field list, so use getAllByText
+    expect(screen.getAllByText("Status").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Blocking status").length).toBeGreaterThanOrEqual(1);
     // "Attack type" should be filtered out
     expect(screen.queryByText("Attack type")).not.toBeInTheDocument();
+  });
+
+  describe("Suggestions", () => {
+    it("shows Suggestions heading when searching", () => {
+      render(
+        <FilterPalette
+          open={true}
+          onOpenChange={vi.fn()}
+          onSelectField={vi.fn()}
+          search="status"
+        >
+          <button>trigger</button>
+        </FilterPalette>,
+      );
+
+      expect(screen.getByText("Suggestions")).toBeInTheDocument();
+    });
+
+    it("hides Recent heading when searching", () => {
+      const recentFilters = [
+        {
+          field: "status",
+          fieldLabel: "Status",
+          operator: "is" as const,
+          operatorLabel: "is",
+          values: ["Blocked"],
+          usedAt: Date.now(),
+        },
+      ];
+
+      render(
+        <FilterPalette
+          open={true}
+          onOpenChange={vi.fn()}
+          onSelectField={vi.fn()}
+          onApplyRecent={vi.fn()}
+          search="status"
+          recentFilters={recentFilters}
+        >
+          <button>trigger</button>
+        </FilterPalette>,
+      );
+
+      expect(screen.queryByText("Recent")).not.toBeInTheDocument();
+      expect(screen.getByText("Suggestions")).toBeInTheDocument();
+    });
+
+    it("does not show Suggestions when input is empty", () => {
+      render(
+        <FilterPalette
+          open={true}
+          onOpenChange={vi.fn()}
+          onSelectField={vi.fn()}
+          search=""
+        >
+          <button>trigger</button>
+        </FilterPalette>,
+      );
+
+      expect(screen.queryByText("Suggestions")).not.toBeInTheDocument();
+    });
+
+    it("renders suggestion labels with field, operator, and value", () => {
+      render(
+        <FilterPalette
+          open={true}
+          onOpenChange={vi.fn()}
+          onSelectField={vi.fn()}
+          search="blo"
+        >
+          <button>trigger</button>
+        </FilterPalette>,
+      );
+
+      // "blo" matches "Blocking status" label → value-match "Active blocking"
+      expect(screen.getByText("Suggestions")).toBeInTheDocument();
+      // Suggestion label renders the matched value
+      expect(screen.getByText("Active blocking")).toBeInTheDocument();
+      // Operator is rendered in muted text
+      const operatorEl = screen.getAllByText("is").find(
+        (el) => el.classList.contains("text-muted-foreground"),
+      );
+      expect(operatorEl).toBeTruthy();
+    });
+
+    it("calls onApplyRecent when clicking a suggestion", async () => {
+      const user = userEvent.setup();
+      const onApplyRecent = vi.fn();
+
+      render(
+        <FilterPalette
+          open={true}
+          onOpenChange={vi.fn()}
+          onSelectField={vi.fn()}
+          onApplyRecent={onApplyRecent}
+          search="blo"
+        >
+          <button>trigger</button>
+        </FilterPalette>,
+      );
+
+      // Find suggestion items — they're in the Suggestions group
+      const suggestionsGroup = screen.getByText("Suggestions").closest("[cmdk-group]");
+      expect(suggestionsGroup).toBeTruthy();
+      const firstItem = suggestionsGroup!.querySelector("[cmdk-item]");
+      expect(firstItem).toBeTruthy();
+
+      await user.click(firstItem!);
+      expect(onApplyRecent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          field: expect.any(String),
+          fieldLabel: expect.any(String),
+          operator: expect.any(String),
+          operatorLabel: expect.any(String),
+          values: expect.any(Array),
+          usedAt: expect.any(Number),
+        }),
+      );
+    });
+
+    it("shows at most 3 suggestions", () => {
+      render(
+        <FilterPalette
+          open={true}
+          onOpenChange={vi.fn()}
+          onSelectField={vi.fn()}
+          search="at"
+        >
+          <button>trigger</button>
+        </FilterPalette>,
+      );
+
+      const suggestionsGroup = screen.getByText("Suggestions").closest("[cmdk-group]");
+      expect(suggestionsGroup).toBeTruthy();
+      const items = suggestionsGroup!.querySelectorAll("[cmdk-item]");
+      expect(items.length).toBeLessThanOrEqual(3);
+    });
   });
 });
