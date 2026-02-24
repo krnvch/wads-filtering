@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -20,14 +21,15 @@ export function ParenChip({ token, onRemove, className }: ParenChipProps) {
   const hasError = !!token.error;
 
   const paren = (
-    <span
+    <Badge
+      variant="secondary"
       tabIndex={0}
       role="listitem"
       data-token-id={token.id}
       aria-label={`${token.type === "open_paren" ? "Open" : "Close"} parenthesis`}
       className={cn(
-        "group inline-flex cursor-default items-center text-lg font-light text-muted-foreground/70 select-none",
-        hasError && "text-destructive",
+        "group cursor-default select-none gap-1 rounded-md px-2 py-1 text-sm font-normal text-muted-foreground",
+        hasError && "border-destructive text-destructive",
         className,
       )}
       onKeyDown={(e) => {
@@ -41,12 +43,12 @@ export function ParenChip({ token, onRemove, className }: ParenChipProps) {
       <button
         type="button"
         onClick={() => onRemove(token.id)}
-        className="ml-0 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+        className="ml-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
         aria-label={`Remove ${token.type === "open_paren" ? "opening" : "closing"} parenthesis`}
       >
         <X className="size-3" />
       </button>
-    </span>
+    </Badge>
   );
 
   if (hasError) {

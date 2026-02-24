@@ -29,13 +29,13 @@ export function ConnectorChip({
 
   const chip = (
     <Badge
-      variant="outline"
+      variant="secondary"
       tabIndex={0}
       role="listitem"
       data-token-id={token.id}
       aria-label={`${label} connector`}
       className={cn(
-        "group cursor-pointer select-none gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors hover:bg-muted",
+        "group cursor-pointer select-none gap-1 rounded-md px-2 py-1 text-sm font-normal transition-colors hover:bg-muted",
         token.type === "or" && "text-primary font-semibold",
         token.type === "and" && "text-muted-foreground",
         hasError && "border-destructive text-destructive",

@@ -10,7 +10,6 @@ interface FilterBarInputProps
   > {
   searchValue: string;
   onSearchChange: (value: string) => void;
-  onInsertParen: (type: "open_paren" | "close_paren") => void;
   onOpenPalette: () => void;
   hasFilters: boolean;
   placeholder?: string;
@@ -22,7 +21,6 @@ export const FilterBarInput = forwardRef<HTMLInputElement, FilterBarInputProps>(
     {
       searchValue,
       onSearchChange,
-      onInsertParen,
       onOpenPalette,
       hasFilters,
       placeholder = "Filter...",
@@ -31,29 +29,6 @@ export const FilterBarInput = forwardRef<HTMLInputElement, FilterBarInputProps>(
     },
     ref,
   ) {
-    const handleKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLInputElement>) => {
-        const key = e.key;
-
-        if (key === "(") {
-          e.preventDefault();
-          onInsertParen("open_paren");
-          return;
-        }
-
-        if (key === ")") {
-          e.preventDefault();
-          onInsertParen("close_paren");
-          return;
-        }
-
-        if (key === "Escape") {
-          // Let Popover handle Escape — don't prevent
-          return;
-        }
-      },
-      [onInsertParen],
-    );
 
     const handleChange = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,7 +54,7 @@ export const FilterBarInput = forwardRef<HTMLInputElement, FilterBarInputProps>(
         value={searchValue}
         onChange={handleChange}
         onClick={handleClick}
-        onKeyDown={handleKeyDown}
+
         className={cn(
           "min-w-[80px] flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground",
           className,
