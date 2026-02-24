@@ -25,21 +25,33 @@ describe("useTokenFilterState", () => {
     expect(chip.values).toEqual(["Blocked"]);
   });
 
-  it("adds second chip with AND connector", () => {
+  it("adds second chip without auto-connector", () => {
     const { result } = renderHook(() => useTokenFilterState());
     act(() => result.current.addFilter("status", ["Blocked"]));
+    act(() => result.current.addFilter("type", ["XSS"]));
+
+    expect(result.current.tokens).toHaveLength(2);
+    expect(isChipToken(result.current.tokens[0])).toBe(true);
+    expect(isChipToken(result.current.tokens[1])).toBe(true);
+    expect(result.current.chipCount).toBe(2);
+  });
+
+  it("inserts explicit connector between chips", () => {
+    const { result } = renderHook(() => useTokenFilterState());
+    act(() => result.current.addFilter("status", ["Blocked"]));
+    act(() => result.current.insertConnector("and"));
     act(() => result.current.addFilter("type", ["XSS"]));
 
     expect(result.current.tokens).toHaveLength(3);
     expect(isChipToken(result.current.tokens[0])).toBe(true);
     expect(isAndToken(result.current.tokens[1])).toBe(true);
     expect(isChipToken(result.current.tokens[2])).toBe(true);
-    expect(result.current.chipCount).toBe(2);
   });
 
   it("removes filter with cascade", () => {
     const { result } = renderHook(() => useTokenFilterState());
     act(() => result.current.addFilter("status", ["Blocked"]));
+    act(() => result.current.insertConnector("and"));
     act(() => result.current.addFilter("type", ["XSS"]));
 
     const chipId = result.current.tokens[2].id; // second chip
@@ -74,6 +86,7 @@ describe("useTokenFilterState", () => {
   it("toggles connector", () => {
     const { result } = renderHook(() => useTokenFilterState());
     act(() => result.current.addFilter("status", ["Blocked"]));
+    act(() => result.current.insertConnector("and"));
     act(() => result.current.addFilter("type", ["XSS"]));
 
     const connectorId = result.current.tokens[1].id;
@@ -99,6 +112,7 @@ describe("useTokenFilterState", () => {
   it("clears all", () => {
     const { result } = renderHook(() => useTokenFilterState());
     act(() => result.current.addFilter("status", ["Blocked"]));
+    act(() => result.current.insertConnector("and"));
     act(() => result.current.addFilter("type", ["XSS"]));
     act(() => result.current.clearAll());
 
@@ -109,6 +123,7 @@ describe("useTokenFilterState", () => {
   it("derives expression tree", () => {
     const { result } = renderHook(() => useTokenFilterState());
     act(() => result.current.addFilter("status", ["Blocked"]));
+    act(() => result.current.insertConnector("and"));
     act(() => result.current.addFilter("type", ["XSS"]));
 
     const tree = result.current.expressionTree;

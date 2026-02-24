@@ -10,6 +10,7 @@ import {
   updateChipValues,
   updateChipOperator,
   toggleConnectorType,
+  insertConnectorToken,
   insertParenToken,
   countChipTokens,
   clearAllTokens,
@@ -27,8 +28,9 @@ export function useTokenFilterState(initialState?: TokenFilterState) {
       field: string,
       values: string[],
       operator?: TokenFilterOperator,
+      atIndex?: number,
     ) => {
-      setTokenState((prev) => addChipToken(prev, field, values, operator));
+      setTokenState((prev) => addChipToken(prev, field, values, operator, atIndex));
     },
     [],
   );
@@ -55,9 +57,16 @@ export function useTokenFilterState(initialState?: TokenFilterState) {
     setTokenState((prev) => toggleConnectorType(prev, connectorId));
   }, []);
 
+  const insertConnector = useCallback(
+    (type: "and" | "or", atIndex?: number) => {
+      setTokenState((prev) => insertConnectorToken(prev, type, atIndex));
+    },
+    [],
+  );
+
   const insertParen = useCallback(
-    (type: "open_paren" | "close_paren") => {
-      setTokenState((prev) => insertParenToken(prev, type));
+    (type: "open_paren" | "close_paren", atIndex?: number) => {
+      setTokenState((prev) => insertParenToken(prev, type, atIndex));
     },
     [],
   );
@@ -99,6 +108,7 @@ export function useTokenFilterState(initialState?: TokenFilterState) {
     updateFilterValues,
     updateOperator,
     toggleConnector,
+    insertConnector,
     insertParen,
     clearAll,
   };

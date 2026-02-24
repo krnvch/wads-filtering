@@ -11,6 +11,7 @@ import {
   updateChipValues,
   updateChipOperator,
   toggleConnectorType,
+  insertConnectorToken,
   insertParenToken,
   countChipTokens,
   clearAllTokens,
@@ -77,8 +78,8 @@ export function useTokenFilterUrlState() {
   );
 
   const addFilter = useCallback(
-    (field: string, values: string[], operator?: TokenFilterOperator) => {
-      const newState = addChipToken(tokenState, field, values, operator);
+    (field: string, values: string[], operator?: TokenFilterOperator, atIndex?: number) => {
+      const newState = addChipToken(tokenState, field, values, operator, atIndex);
       pushState(newState);
     },
     [tokenState, pushState],
@@ -116,9 +117,17 @@ export function useTokenFilterUrlState() {
     [tokenState, pushState],
   );
 
+  const insertConnector = useCallback(
+    (type: "and" | "or", atIndex?: number) => {
+      const newState = insertConnectorToken(tokenState, type, atIndex);
+      pushState(newState);
+    },
+    [tokenState, pushState],
+  );
+
   const insertParen = useCallback(
-    (type: "open_paren" | "close_paren") => {
-      const newState = insertParenToken(tokenState, type);
+    (type: "open_paren" | "close_paren", atIndex?: number) => {
+      const newState = insertParenToken(tokenState, type, atIndex);
       pushState(newState);
     },
     [tokenState, pushState],
@@ -141,6 +150,7 @@ export function useTokenFilterUrlState() {
     updateFilterValues,
     updateOperator,
     toggleConnector,
+    insertConnector,
     insertParen,
     clearAll,
   };

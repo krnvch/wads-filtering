@@ -49,11 +49,9 @@ export function validateTokens(tokens: Token[]): Token[] {
   // Rule 3: CONSECUTIVE_CONNECTOR
   checkConsecutiveConnectors(result);
 
-  // Rule 4: LEADING_CONNECTOR
-  checkLeadingConnector(result);
-
-  // Rule 5: TRAILING_CONNECTOR
-  checkTrailingConnector(result);
+  // Rules 4 & 5: LEADING/TRAILING_CONNECTOR — skipped.
+  // Connectors are explicitly added by the user and dangling ones are
+  // tolerated (skipped during expression-tree evaluation).
 
   // Rule 6 & 7: EMPTY_GROUP and SINGLE_CHILD_GROUP
   checkGroupContent(result);

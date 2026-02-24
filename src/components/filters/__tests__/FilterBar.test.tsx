@@ -63,6 +63,7 @@ function renderBar(tokens: Token[], overrides: Record<string, unknown> = {}) {
         onUpdateValues={vi.fn()}
         onUpdateOperator={vi.fn()}
         onToggleConnector={vi.fn()}
+        onInsertConnector={vi.fn()}
         onInsertParen={vi.fn()}
         onClearAll={vi.fn()}
         {...overrides}

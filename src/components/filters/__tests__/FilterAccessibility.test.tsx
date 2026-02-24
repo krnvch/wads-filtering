@@ -58,6 +58,7 @@ function renderFilterBar(props: {
         onUpdateValues={vi.fn()}
         onUpdateOperator={vi.fn()}
         onToggleConnector={vi.fn()}
+        onInsertConnector={vi.fn()}
         onInsertParen={vi.fn()}
         onClearAll={props.onClearAll ?? vi.fn()}
         resultCount={props.resultCount}
@@ -233,6 +234,7 @@ describe("FilterAccessibility: ARIA structure", () => {
           onUpdateValues={vi.fn()}
           onUpdateOperator={vi.fn()}
           onToggleConnector={vi.fn()}
+          onInsertConnector={vi.fn()}
           onInsertParen={vi.fn()}
           onClearAll={vi.fn()}
         />
@@ -251,6 +253,7 @@ describe("FilterAccessibility: ARIA structure", () => {
           onUpdateValues={vi.fn()}
           onUpdateOperator={vi.fn()}
           onToggleConnector={vi.fn()}
+          onInsertConnector={vi.fn()}
           onInsertParen={vi.fn()}
           onClearAll={vi.fn()}
         />
@@ -279,6 +282,7 @@ describe("FilterAccessibility: ARIA structure", () => {
           onUpdateValues={vi.fn()}
           onUpdateOperator={vi.fn()}
           onToggleConnector={vi.fn()}
+          onInsertConnector={vi.fn()}
           onInsertParen={vi.fn()}
           onClearAll={vi.fn()}
         />
@@ -297,6 +301,7 @@ describe("FilterAccessibility: ARIA structure", () => {
           onUpdateValues={vi.fn()}
           onUpdateOperator={vi.fn()}
           onToggleConnector={vi.fn()}
+          onInsertConnector={vi.fn()}
           onInsertParen={vi.fn()}
           onClearAll={vi.fn()}
         />

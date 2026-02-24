@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { FilterBar } from "../FilterBar";
 import { useTokenFilterState } from "@/hooks/use-token-filter-state";
 import { evaluateExpression } from "@/lib/filter-engine";
-import { addChipToken, createEmptyTokenState } from "@/lib/token-utils";
+import { addChipToken, insertConnectorToken, createEmptyTokenState } from "@/lib/token-utils";
 import type { TokenFilterState } from "@/types/tokens";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useFilterUIStore } from "@/stores/filter-ui-store";
@@ -29,6 +29,7 @@ function TestHarness({ initialState }: { initialState?: TokenFilterState }) {
     updateFilterValues,
     updateOperator,
     toggleConnector,
+    insertConnector,
     insertParen,
     clearAll,
   } = useTokenFilterState(initialState);
@@ -51,6 +52,7 @@ function TestHarness({ initialState }: { initialState?: TokenFilterState }) {
           onUpdateValues={updateFilterValues}
           onUpdateOperator={updateOperator}
           onToggleConnector={toggleConnector}
+          onInsertConnector={insertConnector}
           onInsertParen={insertParen}
           onClearAll={clearAll}
         />
@@ -95,12 +97,10 @@ describe("Filter Flow Integration", () => {
     expect(screen.getByTestId("result-count")).toHaveTextContent("2 results");
   });
 
-  it("multi-filter AND: add 2 chips → both render with AND between", () => {
-    const state = addChipToken(
-      addChipToken(createEmptyTokenState(), "status", ["Blocked"]),
-      "impact",
-      ["High"],
-    );
+  it("multi-filter AND: add 2 chips with explicit AND → both render with AND between", () => {
+    let state = addChipToken(createEmptyTokenState(), "status", ["Blocked"]);
+    state = insertConnectorToken(state, "and");
+    state = addChipToken(state, "impact", ["High"]);
     render(<TestHarness initialState={state} />);
 
     expect(screen.getByText("AND")).toBeInTheDocument();
@@ -122,11 +122,9 @@ describe("Filter Flow Integration", () => {
 
   it("clear all: click × → all gone → empty state", async () => {
     const user = userEvent.setup();
-    const state = addChipToken(
-      addChipToken(createEmptyTokenState(), "status", ["Blocked"]),
-      "impact",
-      ["High"],
-    );
+    let state = addChipToken(createEmptyTokenState(), "status", ["Blocked"]);
+    state = insertConnectorToken(state, "and");
+    state = addChipToken(state, "impact", ["High"]);
     render(<TestHarness initialState={state} />);
 
     expect(screen.getByTestId("result-count")).toHaveTextContent("2 results");

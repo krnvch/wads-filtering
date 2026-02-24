@@ -147,14 +147,14 @@ describe("validateTokens", () => {
     });
   });
 
-  describe("LEADING_CONNECTOR", () => {
-    it("flags connector at start", () => {
+  describe("LEADING_CONNECTOR (tolerated)", () => {
+    it("does not flag connector at start", () => {
       const tokens: Token[] = [andTok(), chip("status", ["Blocked"])];
       const result = validateTokens(tokens);
-      expect(result[0].error?.code).toBe("LEADING_CONNECTOR");
+      expect(result[0].error).toBeUndefined();
     });
 
-    it("flags connector after open paren", () => {
+    it("does not flag connector after open paren", () => {
       const pId = generatePairId();
       const tokens: Token[] = [
         openP(pId),
@@ -163,18 +163,18 @@ describe("validateTokens", () => {
         closeP(pId),
       ];
       const result = validateTokens(tokens);
-      expect(result[1].error?.code).toBe("LEADING_CONNECTOR");
+      expect(result[1].error).toBeUndefined();
     });
   });
 
-  describe("TRAILING_CONNECTOR", () => {
-    it("flags connector at end", () => {
+  describe("TRAILING_CONNECTOR (tolerated)", () => {
+    it("does not flag connector at end", () => {
       const tokens: Token[] = [chip("status", ["Blocked"]), andTok()];
       const result = validateTokens(tokens);
-      expect(result[1].error?.code).toBe("TRAILING_CONNECTOR");
+      expect(result[1].error).toBeUndefined();
     });
 
-    it("flags connector before close paren", () => {
+    it("does not flag connector before close paren", () => {
       const pId = generatePairId();
       const tokens: Token[] = [
         openP(pId),
@@ -183,7 +183,7 @@ describe("validateTokens", () => {
         closeP(pId),
       ];
       const result = validateTokens(tokens);
-      expect(result[2].error?.code).toBe("TRAILING_CONNECTOR");
+      expect(result[2].error).toBeUndefined();
     });
   });
 

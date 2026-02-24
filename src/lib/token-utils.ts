@@ -20,6 +20,15 @@ import {
 import { getFieldByKey } from "./filter-schema";
 import { generateTokenId, generatePairId } from "./token-parser";
 
+/** Insert a token at a specific index, or append at end if undefined. */
+function spliceInsert(tokens: Token[], token: Token, atIndex?: number): Token[] {
+  if (atIndex === undefined || atIndex >= tokens.length) {
+    return [...tokens, token];
+  }
+  const idx = Math.max(0, atIndex);
+  return [...tokens.slice(0, idx), token, ...tokens.slice(idx)];
+}
+
 /**
  * Create an empty token filter state.
  */
@@ -28,13 +37,15 @@ export function createEmptyTokenState(): TokenFilterState {
 }
 
 /**
- * Add a filter chip token. Appends AND connector + chip (if tokens exist).
+ * Add a filter chip token at a specific position (defaults to end).
+ * No auto-connector — connectors must be added explicitly.
  */
 export function addChipToken(
   state: TokenFilterState,
   field: string,
   values: string[],
   operator?: TokenFilterOperator,
+  atIndex?: number,
 ): TokenFilterState {
   const fieldDef = getFieldByKey(field);
   const defaultOp = operator ?? getDefaultOperator(field);
@@ -48,17 +59,7 @@ export function addChipToken(
     values,
   };
 
-  // If tokens already exist, insert AND connector first
-  if (state.tokens.length > 0) {
-    const lastToken = state.tokens[state.tokens.length - 1];
-    // Don't add connector after open paren or existing connector
-    if (!isOpenParen(lastToken) && !isConnectorToken(lastToken)) {
-      const andToken: AndToken = { type: "and", id: generateTokenId() };
-      return { tokens: [...state.tokens, andToken, chip] };
-    }
-  }
-
-  return { tokens: [...state.tokens, chip] };
+  return { tokens: spliceInsert(state.tokens, chip, atIndex) };
 }
 
 /**
@@ -233,28 +234,30 @@ export function updateChipOperator(
 }
 
 /**
- * Insert a connector token at the end.
+ * Insert a connector token at a specific position (defaults to end).
  */
 export function insertConnectorToken(
   state: TokenFilterState,
   connectorType: "and" | "or",
+  atIndex?: number,
 ): TokenFilterState {
   const token: AndToken | OrToken =
     connectorType === "and"
       ? { type: "and", id: generateTokenId() }
       : { type: "or", id: generateTokenId() };
 
-  return { tokens: [...state.tokens, token] };
+  return { tokens: spliceInsert(state.tokens, token, atIndex) };
 }
 
 /**
- * Insert a paren token at the end (open or close).
+ * Insert a paren token at a specific position (defaults to end).
  * For open parens, generates a new pairId.
  * For close parens, tries to match the most recent unmatched open paren.
  */
 export function insertParenToken(
   state: TokenFilterState,
   parenType: "open_paren" | "close_paren",
+  atIndex?: number,
 ): TokenFilterState {
   if (parenType === "open_paren") {
     const pairId = generatePairId();
@@ -263,7 +266,7 @@ export function insertParenToken(
       id: generateTokenId(),
       pairId,
     };
-    return { tokens: [...state.tokens, token] };
+    return { tokens: spliceInsert(state.tokens, token, atIndex) };
   }
 
   // Close paren: find most recent unmatched open paren
@@ -287,7 +290,7 @@ export function insertParenToken(
     id: generateTokenId(),
     pairId,
   };
-  return { tokens: [...state.tokens, token] };
+  return { tokens: spliceInsert(state.tokens, token, atIndex) };
 }
 
 /**

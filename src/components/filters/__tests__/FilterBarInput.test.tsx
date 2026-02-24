@@ -7,8 +7,8 @@ describe("FilterBarInput", () => {
   it("renders with placeholder when no filters", () => {
     render(
       <FilterBarInput
-        onType={vi.fn()}
-        onInsertParen={vi.fn()}
+        searchValue=""
+        onSearchChange={vi.fn()}
         onOpenPalette={vi.fn()}
         hasFilters={false}
       />,
@@ -19,8 +19,8 @@ describe("FilterBarInput", () => {
   it("keeps placeholder visible when filters exist", () => {
     render(
       <FilterBarInput
-        onType={vi.fn()}
-        onInsertParen={vi.fn()}
+        searchValue=""
+        onSearchChange={vi.fn()}
         onOpenPalette={vi.fn()}
         hasFilters={true}
       />,
@@ -29,47 +29,13 @@ describe("FilterBarInput", () => {
     expect(input).toHaveAttribute("placeholder", "Filter...");
   });
 
-  it("calls onInsertParen when ( is pressed", async () => {
-    const user = userEvent.setup();
-    const onInsertParen = vi.fn();
-    render(
-      <FilterBarInput
-        onType={vi.fn()}
-        onInsertParen={onInsertParen}
-        onOpenPalette={vi.fn()}
-        hasFilters={false}
-      />,
-    );
-    const input = screen.getByLabelText("Add filter");
-    input.focus();
-    await user.keyboard("(");
-    expect(onInsertParen).toHaveBeenCalledWith("open_paren");
-  });
-
-  it("calls onInsertParen when ) is pressed", async () => {
-    const user = userEvent.setup();
-    const onInsertParen = vi.fn();
-    render(
-      <FilterBarInput
-        onType={vi.fn()}
-        onInsertParen={onInsertParen}
-        onOpenPalette={vi.fn()}
-        hasFilters={false}
-      />,
-    );
-    const input = screen.getByLabelText("Add filter");
-    input.focus();
-    await user.keyboard(")");
-    expect(onInsertParen).toHaveBeenCalledWith("close_paren");
-  });
-
   it("calls onOpenPalette when clicked", async () => {
     const user = userEvent.setup();
     const onOpenPalette = vi.fn();
     render(
       <FilterBarInput
-        onType={vi.fn()}
-        onInsertParen={vi.fn()}
+        searchValue=""
+        onSearchChange={vi.fn()}
         onOpenPalette={onOpenPalette}
         hasFilters={false}
       />,
@@ -81,8 +47,8 @@ describe("FilterBarInput", () => {
   it("has data-filter-bar-input attribute", () => {
     render(
       <FilterBarInput
-        onType={vi.fn()}
-        onInsertParen={vi.fn()}
+        searchValue=""
+        onSearchChange={vi.fn()}
         onOpenPalette={vi.fn()}
         hasFilters={false}
       />,

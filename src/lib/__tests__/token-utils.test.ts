@@ -81,15 +81,14 @@ describe("addChipToken", () => {
     expect((result.tokens[0] as FilterChipToken).field).toBe("status");
   });
 
-  it("adds second chip with AND connector", () => {
+  it("adds second chip without auto-connector", () => {
     let state = createEmptyTokenState();
     state = addChipToken(state, "status", ["Blocked"]);
     state = addChipToken(state, "type", ["XSS"]);
 
-    expect(state.tokens).toHaveLength(3);
+    expect(state.tokens).toHaveLength(2);
     expect(isChipToken(state.tokens[0])).toBe(true);
-    expect(isAndToken(state.tokens[1])).toBe(true);
-    expect(isChipToken(state.tokens[2])).toBe(true);
+    expect(isChipToken(state.tokens[1])).toBe(true);
   });
 
   it("uses default operator for field type", () => {
@@ -108,7 +107,7 @@ describe("addChipToken", () => {
     expect(c.operator).toBe("is_not");
   });
 
-  it("does not add connector after open paren", () => {
+  it("appends chip after open paren without connector", () => {
     const pairId = generatePairId();
     const state: TokenFilterState = {
       tokens: [openP(pairId)],

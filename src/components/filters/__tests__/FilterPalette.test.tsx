@@ -20,6 +20,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={vi.fn()}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -44,6 +46,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={vi.fn()}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -63,6 +67,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={onSelectField}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -88,6 +94,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={onSelectField}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -110,6 +118,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={vi.fn()}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -130,6 +140,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={onSelectField}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -155,6 +167,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={onSelectField}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -171,29 +185,26 @@ describe("FilterPalette", () => {
     );
   });
 
-  it("ArrowUp wraps to last field", async () => {
+  it("ArrowUp wraps to last item (close paren)", async () => {
     const user = userEvent.setup();
-    const onSelectField = vi.fn();
+    const onSelectParen = vi.fn();
 
     render(
       <FilterPalette
         open={true}
         onOpenChange={vi.fn()}
-        onSelectField={onSelectField}
+        onSelectField={vi.fn()}
+        onSelectConnector={vi.fn()}
+        onSelectParen={onSelectParen}
         search=""
       >
         <button>trigger</button>
       </FilterPalette>,
     );
 
-    // ArrowUp from index 0 wraps to the last item in FILTER_FIELDS
+    // ArrowUp from index 0 wraps to the last item (close paren)
     await user.keyboard("{ArrowUp}{Enter}");
-    expect(onSelectField).toHaveBeenCalledWith(
-      expect.objectContaining({
-        key: "response_code",
-        label: "Response code",
-      }),
-    );
+    expect(onSelectParen).toHaveBeenCalledWith("close_paren");
   });
 
   it("filters fields and resets highlight on search", () => {
@@ -204,6 +215,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={onSelectField}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search=""
       >
         <button>trigger</button>
@@ -216,6 +229,8 @@ describe("FilterPalette", () => {
         open={true}
         onOpenChange={vi.fn()}
         onSelectField={onSelectField}
+        onSelectConnector={vi.fn()}
+        onSelectParen={vi.fn()}
         search="sta"
       >
         <button>trigger</button>
@@ -236,6 +251,8 @@ describe("FilterPalette", () => {
           open={true}
           onOpenChange={vi.fn()}
           onSelectField={vi.fn()}
+          onSelectConnector={vi.fn()}
+          onSelectParen={vi.fn()}
           search="status"
         >
           <button>trigger</button>
@@ -262,6 +279,8 @@ describe("FilterPalette", () => {
           open={true}
           onOpenChange={vi.fn()}
           onSelectField={vi.fn()}
+          onSelectConnector={vi.fn()}
+          onSelectParen={vi.fn()}
           onApplyRecent={vi.fn()}
           search="status"
           recentFilters={recentFilters}
@@ -280,6 +299,8 @@ describe("FilterPalette", () => {
           open={true}
           onOpenChange={vi.fn()}
           onSelectField={vi.fn()}
+          onSelectConnector={vi.fn()}
+          onSelectParen={vi.fn()}
           search=""
         >
           <button>trigger</button>
@@ -295,6 +316,8 @@ describe("FilterPalette", () => {
           open={true}
           onOpenChange={vi.fn()}
           onSelectField={vi.fn()}
+          onSelectConnector={vi.fn()}
+          onSelectParen={vi.fn()}
           search="blo"
         >
           <button>trigger</button>
@@ -321,6 +344,8 @@ describe("FilterPalette", () => {
           open={true}
           onOpenChange={vi.fn()}
           onSelectField={vi.fn()}
+          onSelectConnector={vi.fn()}
+          onSelectParen={vi.fn()}
           onApplyRecent={onApplyRecent}
           search="blo"
         >
@@ -353,6 +378,8 @@ describe("FilterPalette", () => {
           open={true}
           onOpenChange={vi.fn()}
           onSelectField={vi.fn()}
+          onSelectConnector={vi.fn()}
+          onSelectParen={vi.fn()}
           search="at"
         >
           <button>trigger</button>
