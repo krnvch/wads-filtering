@@ -14,6 +14,7 @@
 | 7 | **Staff Backend Engineer — API** | `agents/backend-engineer-1.md` | API design, DB schema, filter query engine, business logic |
 | 8 | **Staff Backend Engineer — Infra** | `agents/backend-engineer-2.md` | Performance, caching, monitoring, CI/CD, infrastructure |
 | 9 | **QA Tester** | `agents/qa-tester.md` | Test plans, E2E tests, edge cases, accessibility audits |
+| 10 | **Principal UX Researcher — Adversarial (Red Hat)** | `agents/ux-researcher-adversarial.md` | Devil's advocate, stress-tests all decisions, finds blind spots, demands evidence |
 
 ## Domain Focus
 
