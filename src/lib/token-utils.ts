@@ -512,6 +512,8 @@ function getDefaultOperator(fieldKey: string): TokenFilterOperator {
       return "in_the_last";
     case "numeric":
       return "equals";
+    case "ip":
+      return "in";
     default:
       return "is";
   }

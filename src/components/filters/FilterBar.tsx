@@ -10,6 +10,7 @@ import { EnumValueSelector } from "./EnumValueSelector";
 import { TextValueInput } from "./TextValueInput";
 import { DateValueSelector } from "./DateValueSelector";
 import { NumericValueInput } from "./NumericValueInput";
+import { IpValueInput } from "./IpValueInput";
 import { TokenRenderer } from "./TokenRenderer";
 import { FilterBarInput } from "./FilterBarInput";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -118,6 +119,7 @@ export function FilterBar({
   const [searchText, setSearchText] = useState("");
   const [pendingField, setPendingField] = useState<FilterFieldDef | null>(null);
   const [pendingValues, setPendingValues] = useState<string[]>([]);
+  const [pendingOperator, setPendingOperator] = useState<TokenFilterOperator | null>(null);
   // Insertion cursor position: index in the token array where new tokens will be inserted.
   // Defaults to tokens.length (end). Clicking between chips repositions it.
   const [insertionIndex, setInsertionIndex] = useState(tokens.length);
@@ -138,6 +140,7 @@ export function FilterBar({
     setSearchText("");
     setPendingField(field);
     setPendingValues([]);
+    setPendingOperator(getDefaultOperatorForField(field));
   }, []);
 
   const saveRecent = useCallback(
@@ -158,7 +161,7 @@ export function FilterBar({
     (overrideValues?: string[]) => {
       const vals = overrideValues ?? pendingValues;
       if (pendingField && vals.length > 0) {
-        const baseOp = getDefaultOperatorForField(pendingField);
+        const baseOp = pendingOperator ?? getDefaultOperatorForField(pendingField);
         const op = tokenAutoUpgradeOperator(baseOp, vals.length);
         onAddFilter(pendingField.key, vals, op, clampedInsertionIndex);
         saveRecent(pendingField, op, vals);
@@ -167,15 +170,16 @@ export function FilterBar({
       }
       setPendingField(null);
       setPendingValues([]);
+      setPendingOperator(null);
     },
-    [pendingField, pendingValues, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
+    [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
   );
 
   const handlePendingOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
         if (pendingField && pendingValues.length > 0) {
-          const baseOp = getDefaultOperatorForField(pendingField);
+          const baseOp = pendingOperator ?? getDefaultOperatorForField(pendingField);
           const op = tokenAutoUpgradeOperator(baseOp, pendingValues.length);
           onAddFilter(pendingField.key, pendingValues, op, clampedInsertionIndex);
           saveRecent(pendingField, op, pendingValues);
@@ -184,9 +188,10 @@ export function FilterBar({
         }
         setPendingField(null);
         setPendingValues([]);
+        setPendingOperator(null);
       }
     },
-    [pendingField, pendingValues, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
+    [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
   );
 
   const handleApplyRecent = useCallback(
@@ -297,6 +302,8 @@ export function FilterBar({
         handlePendingConfirm,
         handlePendingOpenChange,
         textSuggestions,
+        pendingOperator,
+        setPendingOperator,
       )
     : null;
 
@@ -466,6 +473,8 @@ function getDefaultOperatorForField(
       return "in_the_last";
     case "numeric":
       return "equals";
+    case "ip":
+      return "in";
     default:
       return "is";
   }
@@ -478,6 +487,8 @@ function renderValueSelector(
   onConfirm: (overrideValues?: string[]) => void,
   onOpenChange: (open: boolean) => void,
   textSuggestions?: Record<string, string[]>,
+  pendingOperator?: TokenFilterOperator | null,
+  setPendingOperator?: (op: TokenFilterOperator) => void,
 ) {
   const trigger = (
     <span className="text-sm text-muted-foreground">
@@ -525,6 +536,23 @@ function renderValueSelector(
         >
           {trigger}
         </TextValueInput>
+      );
+    case "ip":
+      return (
+        <IpValueInput
+          open={true}
+          onOpenChange={onOpenChange}
+          fieldDef={field}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={onConfirm}
+          datasetIps={textSuggestions?.["sources.ips"]}
+          variant="inline"
+          operator={(pendingOperator as TokenFilterOperator) ?? "in"}
+          onOperatorChange={setPendingOperator}
+        >
+          {trigger}
+        </IpValueInput>
       );
     default:
       return (

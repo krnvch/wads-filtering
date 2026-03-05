@@ -39,6 +39,7 @@ export function generateSuggestions(
 
   for (const f of matchingFields) {
     if (f.type === "numeric") continue;
+    if (f.type === "ip") continue;
 
     if (f.type === "enum") {
       const matchedValue = f.values?.find((v) =>

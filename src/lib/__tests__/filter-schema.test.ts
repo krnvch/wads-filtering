@@ -6,11 +6,12 @@ import {
   getEnumFields,
   getDateFields,
   getNumericFields,
+  getIpFields,
 } from "../filter-schema";
 
 describe("FILTER_FIELDS", () => {
-  it("has 11 total fields", () => {
-    expect(FILTER_FIELDS).toHaveLength(11);
+  it("has 12 total fields", () => {
+    expect(FILTER_FIELDS).toHaveLength(12);
   });
 
   it("has 6 Attack characteristics fields", () => {
@@ -26,13 +27,14 @@ describe("FILTER_FIELDS", () => {
     ]);
   });
 
-  it("has 3 Target & Context fields", () => {
+  it("has 4 Target & Context fields", () => {
     const fields = getFieldsByCategory("Target & Context");
-    expect(fields).toHaveLength(3);
+    expect(fields).toHaveLength(4);
     expect(fields.map((f) => f.key)).toEqual([
       "endpoints",
       "host",
       "parameter",
+      "sources.ips",
     ]);
   });
 
@@ -45,15 +47,12 @@ describe("FILTER_FIELDS", () => {
     ]);
   });
 
-  it("has 5 enum fields, 3 text fields, 2 date fields, and 1 numeric field", () => {
-    const enumFields = getEnumFields();
-    expect(enumFields).toHaveLength(5);
-    const textFields = FILTER_FIELDS.filter((f) => f.type === "text");
-    expect(textFields).toHaveLength(3);
-    const dateFields = getDateFields();
-    expect(dateFields).toHaveLength(2);
-    const numericFields = getNumericFields();
-    expect(numericFields).toHaveLength(1);
+  it("has 5 enum, 3 text, 2 date, 1 numeric, and 1 ip field", () => {
+    expect(getEnumFields()).toHaveLength(5);
+    expect(FILTER_FIELDS.filter((f) => f.type === "text")).toHaveLength(3);
+    expect(getDateFields()).toHaveLength(2);
+    expect(getNumericFields()).toHaveLength(1);
+    expect(getIpFields()).toHaveLength(1);
   });
 
   it("all fields have operators arrays", () => {
@@ -99,5 +98,17 @@ describe("getEnumFields", () => {
     );
     expect(httpField).toBeDefined();
     expect(httpField!.values).toEqual(["200", "401", "403", "404", "500"]);
+  });
+});
+
+describe("getIpFields", () => {
+  it("has IP field with correct operators", () => {
+    const ipField = getFieldByKey("sources.ips");
+    expect(ipField).toBeDefined();
+    expect(ipField!.type).toBe("ip");
+    expect(ipField!.operators).toContain("in");
+    expect(ipField!.operators).toContain("not_in");
+    expect(ipField!.operators).toContain("is_set");
+    expect(ipField!.operators).toContain("is_not_set");
   });
 });

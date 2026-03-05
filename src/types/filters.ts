@@ -27,7 +27,10 @@ export type FilterOperator =
   | "not_on"
   | "in_the_last"
   | "not_in_the_last"
-  | "between_dates";
+  | "between_dates"
+  // IP
+  | "in"
+  | "not_in";
 
 export interface FilterCondition {
   id: string;
@@ -47,7 +50,7 @@ export interface FilterState {
   expression: FilterGroup;
 }
 
-export type FilterFieldType = "enum" | "text" | "date" | "numeric";
+export type FilterFieldType = "enum" | "text" | "date" | "numeric" | "ip";
 
 export interface FilterFieldDef {
   key: string;

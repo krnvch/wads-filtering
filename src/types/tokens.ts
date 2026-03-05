@@ -44,7 +44,10 @@ export type TokenFilterOperator =
   | "not_on"
   | "in_the_last"
   | "not_in_the_last"
-  | "between_dates";
+  | "between_dates"
+  // IP
+  | "in"
+  | "not_in";
 
 // Token discriminated union
 export interface FilterChipToken {
@@ -96,7 +99,7 @@ export interface TokenFilterState {
 }
 
 // Expanded field type
-export type TokenFilterFieldType = "enum" | "text" | "date" | "numeric";
+export type TokenFilterFieldType = "enum" | "text" | "date" | "numeric" | "ip";
 
 // Operator display labels
 export const OPERATOR_LABELS: Record<TokenFilterOperator, string> = {
@@ -124,6 +127,8 @@ export const OPERATOR_LABELS: Record<TokenFilterOperator, string> = {
   in_the_last: "in the last",
   not_in_the_last: "not in the last",
   between_dates: "is between",
+  in: "in",
+  not_in: "not in",
 };
 
 // Operators that require no values (unary)
@@ -158,6 +163,10 @@ export const OPERATORS_BY_FIELD_TYPE: Record<
   numeric: {
     primary: ["equals", "not_equals", "gt", "lt"],
     advanced: ["gte", "lte", "in_between", "is_set", "is_not_set"],
+  },
+  ip: {
+    primary: ["in", "not_in"],
+    advanced: ["is_set", "is_not_set"],
   },
 };
 

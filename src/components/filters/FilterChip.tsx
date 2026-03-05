@@ -7,6 +7,7 @@ import { EnumValueSelector } from "./EnumValueSelector";
 import { TextValueInput } from "./TextValueInput";
 import { DateValueSelector } from "./DateValueSelector";
 import { NumericValueInput } from "./NumericValueInput";
+import { IpValueInput } from "./IpValueInput";
 import { OperatorSelector } from "./OperatorSelector";
 import type {
   FilterCondition,
@@ -146,6 +147,21 @@ export function FilterChip({
         >
           {valueTrigger}
         </NumericValueInput>
+      );
+      break;
+    case "ip":
+      valueEditor = (
+        <IpValueInput
+          open={valuePopoverOpen}
+          onOpenChange={handleOpenChange}
+          fieldDef={fieldDef}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={handleConfirm}
+          datasetIps={suggestions}
+        >
+          {valueTrigger}
+        </IpValueInput>
       );
       break;
     default:
