@@ -266,6 +266,20 @@ describe("round-trip: serialize → deserialize", () => {
     expect(isAndToken(deserialized[5])).toBe(true);
   });
 
+  it("round-trips IP filter values with dots", () => {
+    const original: Token[] = [
+      chip("sources.ips", ["44.209.156.240", "10.0.0.0/8"], "in"),
+    ];
+    const serialized = serializeTokens(original);
+    const deserialized = deserializeTokens(serialized);
+
+    expect(deserialized).toHaveLength(1);
+    const c = deserialized[0] as FilterChipToken;
+    expect(c.field).toBe("sources.ips");
+    expect(c.operator).toBe("in");
+    expect(c.values).toEqual(["44.209.156.240", "10.0.0.0/8"]);
+  });
+
   it("preserves multi-value chips", () => {
     const original: Token[] = [
       chip("status", ["Blocked", "Monitored", "Started"], "is_any_of"),

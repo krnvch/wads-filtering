@@ -7,6 +7,7 @@ import { EnumValueSelector } from "./EnumValueSelector";
 import { TextValueInput } from "./TextValueInput";
 import { DateValueSelector } from "./DateValueSelector";
 import { NumericValueInput } from "./NumericValueInput";
+import { IpValueInput } from "./IpValueInput";
 import { OperatorSelector } from "./OperatorSelector";
 import type {
   FilterCondition,
@@ -14,7 +15,12 @@ import type {
   FilterOperator,
 } from "@/types/filters";
 import { OPERATOR_LABELS } from "@/types/tokens";
-import type { TokenFilterOperator } from "@/types/tokens";
+import type { TokenFilterOperator, TokenError } from "@/types/tokens";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface FilterChipProps {
@@ -24,6 +30,7 @@ interface FilterChipProps {
   onUpdateValues: (id: string, values: string[]) => void;
   onUpdateOperator: (id: string, operator: FilterOperator) => void;
   suggestions?: string[];
+  error?: TokenError;
   className?: string;
 }
 
@@ -42,6 +49,7 @@ export function FilterChip({
   onUpdateValues,
   onUpdateOperator,
   suggestions,
+  error,
   className,
 }: FilterChipProps) {
   const [valuePopoverOpen, setValuePopoverOpen] = useState(false);
@@ -93,13 +101,40 @@ export function FilterChip({
 
   const ariaLabel = `${condition.fieldLabel} ${formatOperator(condition.operator)} ${condition.values.join(", ")}`;
 
+  const invalidValues = error?.invalidValues;
+
   const valueTrigger = (
     <button
       type="button"
       className="cursor-pointer text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
       aria-label={`Edit ${condition.fieldLabel} values`}
     >
-      {formatValues(condition.values)}
+      {invalidValues && invalidValues.length > 0
+        ? condition.values.map((v, i) => {
+            const isInvalid = invalidValues.includes(v);
+            const separator = i < condition.values.length - 1 ? ", " : "";
+            if (isInvalid) {
+              return (
+                <Tooltip key={`${v}-${i}`}>
+                  <TooltipTrigger asChild>
+                    <span className="text-destructive underline decoration-wavy decoration-destructive/50">
+                      {v}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    {error.message}
+                  </TooltipContent>
+                  {separator && <span>{separator}</span>}
+                </Tooltip>
+              );
+            }
+            return (
+              <span key={`${v}-${i}`}>
+                {v}{separator}
+              </span>
+            );
+          })
+        : formatValues(condition.values)}
     </button>
   );
 
@@ -146,6 +181,21 @@ export function FilterChip({
         >
           {valueTrigger}
         </NumericValueInput>
+      );
+      break;
+    case "ip":
+      valueEditor = (
+        <IpValueInput
+          open={valuePopoverOpen}
+          onOpenChange={handleOpenChange}
+          fieldDef={fieldDef}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={handleConfirm}
+          datasetIps={suggestions}
+        >
+          {valueTrigger}
+        </IpValueInput>
       );
       break;
     default:

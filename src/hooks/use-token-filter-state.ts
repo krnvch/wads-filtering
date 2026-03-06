@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import type { TokenFilterState, TokenFilterOperator } from "@/types/tokens";
 import type { FilterGroup } from "@/types/filters";
 import {
@@ -16,7 +16,7 @@ import {
   clearAllTokens,
 } from "@/lib/token-utils";
 import { tokensToExpressionTree } from "@/lib/token-parser";
-import { validateTokens, hasTokenErrors } from "@/lib/token-validation";
+import { validateTokensEager, validateTokensDeferred, hasTokenErrors } from "@/lib/token-validation";
 
 export function useTokenFilterState(initialState?: TokenFilterState) {
   const [tokenState, setTokenState] = useState<TokenFilterState>(
@@ -80,15 +80,33 @@ export function useTokenFilterState(initialState?: TokenFilterState) {
     [tokenState.tokens],
   );
 
-  const validatedTokens = useMemo(
-    () => validateTokens(tokenState.tokens),
+  const [searchInitiated, setSearchInitiated] = useState(false);
+  const prevTokensRef = useRef(tokenState.tokens);
+
+  // Reset searchInitiated when tokens change
+  if (prevTokensRef.current !== tokenState.tokens) {
+    prevTokensRef.current = tokenState.tokens;
+    if (searchInitiated) setSearchInitiated(false);
+  }
+
+  const eagerTokens = useMemo(
+    () => validateTokensEager(tokenState.tokens),
     [tokenState.tokens],
+  );
+
+  const validatedTokens = useMemo(
+    () => searchInitiated ? validateTokensDeferred(eagerTokens) : eagerTokens,
+    [eagerTokens, searchInitiated],
   );
 
   const hasErrors = useMemo(
     () => hasTokenErrors(validatedTokens),
     [validatedTokens],
   );
+
+  const triggerSearch = useCallback(() => {
+    setSearchInitiated(true);
+  }, []);
 
   const chipCount = useMemo(
     () => countChipTokens(tokenState),
@@ -111,5 +129,6 @@ export function useTokenFilterState(initialState?: TokenFilterState) {
     insertConnector,
     insertParen,
     clearAll,
+    triggerSearch,
   };
 }

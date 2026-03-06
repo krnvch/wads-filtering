@@ -41,7 +41,7 @@ export function useFilterFocus(): UseFilterFocusReturn {
       }
 
       // Try to focus the chip that took the removed one's position (next chip)
-      if (removedIndex < remainingChips.length) {
+      if (removedIndex >= 0 && removedIndex < remainingChips.length) {
         remainingChips[removedIndex].focus();
         return;
       }

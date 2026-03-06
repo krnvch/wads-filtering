@@ -46,6 +46,7 @@ export function TokenRenderer({
             onUpdateOperator(id, op as TokenFilterOperator)
           }
           suggestions={textSuggestions?.[token.field]}
+          error={token.error}
         />
       );
 

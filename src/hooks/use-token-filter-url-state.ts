@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import type { TokenFilterState, TokenFilterOperator } from "@/types/tokens";
 import type { FilterGroup } from "@/types/filters";
@@ -23,7 +23,7 @@ import {
   migrateLegacyToTokens,
 } from "@/lib/token-url";
 import { tokensToExpressionTree } from "@/lib/token-parser";
-import { validateTokens, hasTokenErrors } from "@/lib/token-validation";
+import { validateTokensEager, validateTokensDeferred, hasTokenErrors } from "@/lib/token-validation";
 
 export function useTokenFilterUrlState() {
   const searchParams = useSearchParams();
@@ -51,10 +51,25 @@ export function useTokenFilterUrlState() {
     [tokenState.tokens],
   );
 
-  // Validate tokens
-  const validatedTokens = useMemo(
-    () => validateTokens(tokenState.tokens),
+  // Deferred validation state
+  const [searchInitiated, setSearchInitiated] = useState(false);
+  const prevTokensRef = useRef(tokenState.tokens);
+
+  // Reset searchInitiated when tokens change
+  if (prevTokensRef.current !== tokenState.tokens) {
+    prevTokensRef.current = tokenState.tokens;
+    if (searchInitiated) setSearchInitiated(false);
+  }
+
+  // Validate tokens: eager always, deferred only after search
+  const eagerTokens = useMemo(
+    () => validateTokensEager(tokenState.tokens),
     [tokenState.tokens],
+  );
+
+  const validatedTokens = useMemo(
+    () => searchInitiated ? validateTokensDeferred(eagerTokens) : eagerTokens,
+    [eagerTokens, searchInitiated],
   );
 
   const hasErrors = useMemo(
@@ -137,6 +152,10 @@ export function useTokenFilterUrlState() {
     pushState(clearAllTokens());
   }, [pushState]);
 
+  const triggerSearch = useCallback(() => {
+    setSearchInitiated(true);
+  }, []);
+
   return {
     tokenState,
     tokens: tokenState.tokens,
@@ -153,5 +172,6 @@ export function useTokenFilterUrlState() {
     insertConnector,
     insertParen,
     clearAll,
+    triggerSearch,
   };
 }

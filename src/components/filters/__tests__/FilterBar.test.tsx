@@ -315,4 +315,17 @@ describe("FilterBar (accessibility)", () => {
     await user.click(screen.getByLabelText("Remove Status filter"));
     expect(onRemoveToken).toHaveBeenCalled();
   });
+
+  it("does not create chip for incomplete input on Enter (AC-1.2.1)", async () => {
+    const user = userEvent.setup();
+    const onAddFilter = vi.fn();
+    renderBar([], { onAddFilter });
+
+    const input = screen.getByPlaceholderText("Filter...");
+    await user.click(input);
+    await user.type(input, "zzzznonexistent{Enter}");
+
+    // No chip should be created — onAddFilter not called
+    expect(onAddFilter).not.toHaveBeenCalled();
+  });
 });

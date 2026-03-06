@@ -10,6 +10,7 @@ import { EnumValueSelector } from "./EnumValueSelector";
 import { TextValueInput } from "./TextValueInput";
 import { DateValueSelector } from "./DateValueSelector";
 import { NumericValueInput } from "./NumericValueInput";
+import { IpValueInput } from "./IpValueInput";
 import { TokenRenderer } from "./TokenRenderer";
 import { FilterBarInput } from "./FilterBarInput";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -90,6 +91,7 @@ interface FilterBarProps {
   onInsertConnector: (type: "and" | "or", atIndex?: number) => void;
   onInsertParen: (type: "open_paren" | "close_paren", atIndex?: number) => void;
   onClearAll: () => void;
+  onSearch?: () => void;
   textSuggestions?: Record<string, string[]>;
   resultCount?: number;
   placeholder?: string;
@@ -109,6 +111,7 @@ export function FilterBar({
   onInsertConnector,
   onInsertParen,
   onClearAll,
+  onSearch,
   textSuggestions,
   resultCount,
   placeholder = "Filter...",
@@ -118,6 +121,8 @@ export function FilterBar({
   const [searchText, setSearchText] = useState("");
   const [pendingField, setPendingField] = useState<FilterFieldDef | null>(null);
   const [pendingValues, setPendingValues] = useState<string[]>([]);
+  const [pendingOperator, setPendingOperator] = useState<TokenFilterOperator | null>(null);
+  const [operatorConfirmed, setOperatorConfirmed] = useState(false);
   // Insertion cursor position: index in the token array where new tokens will be inserted.
   // Defaults to tokens.length (end). Clicking between chips repositions it.
   const [insertionIndex, setInsertionIndex] = useState(tokens.length);
@@ -138,6 +143,9 @@ export function FilterBar({
     setSearchText("");
     setPendingField(field);
     setPendingValues([]);
+    setPendingOperator(getDefaultOperatorForField(field));
+    // IP shows operator picker first; other types go straight to value input
+    setOperatorConfirmed(field.type !== "ip");
   }, []);
 
   const saveRecent = useCallback(
@@ -158,24 +166,27 @@ export function FilterBar({
     (overrideValues?: string[]) => {
       const vals = overrideValues ?? pendingValues;
       if (pendingField && vals.length > 0) {
-        const baseOp = getDefaultOperatorForField(pendingField);
+        const baseOp = pendingOperator ?? getDefaultOperatorForField(pendingField);
         const op = tokenAutoUpgradeOperator(baseOp, vals.length);
         onAddFilter(pendingField.key, vals, op, clampedInsertionIndex);
         saveRecent(pendingField, op, vals);
         setInsertionIndex(clampedInsertionIndex + 1);
         focusAfterAdd();
+        onSearch?.();
       }
       setPendingField(null);
       setPendingValues([]);
+      setPendingOperator(null);
+      setOperatorConfirmed(false);
     },
-    [pendingField, pendingValues, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
+    [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex, onSearch],
   );
 
   const handlePendingOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
         if (pendingField && pendingValues.length > 0) {
-          const baseOp = getDefaultOperatorForField(pendingField);
+          const baseOp = pendingOperator ?? getDefaultOperatorForField(pendingField);
           const op = tokenAutoUpgradeOperator(baseOp, pendingValues.length);
           onAddFilter(pendingField.key, pendingValues, op, clampedInsertionIndex);
           saveRecent(pendingField, op, pendingValues);
@@ -184,9 +195,10 @@ export function FilterBar({
         }
         setPendingField(null);
         setPendingValues([]);
+        setPendingOperator(null);
       }
     },
-    [pendingField, pendingValues, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
+    [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
   );
 
   const handleApplyRecent = useCallback(
@@ -289,6 +301,18 @@ export function FilterBar({
 
   useKeyboardShortcuts(shortcuts);
 
+  const handleOperatorConfirm = useCallback((op: TokenFilterOperator) => {
+    setPendingOperator(op);
+    setOperatorConfirmed(true);
+  }, []);
+
+  const handlePendingCancel = useCallback(() => {
+    setPendingField(null);
+    setPendingValues([]);
+    setPendingOperator(null);
+    setOperatorConfirmed(false);
+  }, []);
+
   const pendingSelector = pendingField
     ? renderValueSelector(
         pendingField,
@@ -297,6 +321,10 @@ export function FilterBar({
         handlePendingConfirm,
         handlePendingOpenChange,
         textSuggestions,
+        pendingOperator,
+        operatorConfirmed,
+        handleOperatorConfirm,
+        handlePendingCancel,
       )
     : null;
 
@@ -466,6 +494,8 @@ function getDefaultOperatorForField(
       return "in_the_last";
     case "numeric":
       return "equals";
+    case "ip":
+      return "in";
     default:
       return "is";
   }
@@ -478,6 +508,10 @@ function renderValueSelector(
   onConfirm: (overrideValues?: string[]) => void,
   onOpenChange: (open: boolean) => void,
   textSuggestions?: Record<string, string[]>,
+  pendingOperator?: TokenFilterOperator | null,
+  operatorConfirmed?: boolean,
+  onOperatorConfirm?: (op: TokenFilterOperator) => void,
+  onCancel?: () => void,
 ) {
   const trigger = (
     <span className="text-sm text-muted-foreground">
@@ -525,6 +559,25 @@ function renderValueSelector(
         >
           {trigger}
         </TextValueInput>
+      );
+    case "ip":
+      return (
+        <IpValueInput
+          open={true}
+          onOpenChange={onOpenChange}
+          fieldDef={field}
+          selectedValues={pendingValues}
+          onSelectionChange={setPendingValues}
+          onConfirm={onConfirm}
+          datasetIps={textSuggestions?.["sources.ips"]}
+          variant="inline"
+          operator={(pendingOperator as TokenFilterOperator) ?? "in"}
+          operatorConfirmed={operatorConfirmed ?? false}
+          onOperatorChange={(op) => onOperatorConfirm?.(op)}
+          onCancel={onCancel}
+        >
+          {trigger}
+        </IpValueInput>
       );
     default:
       return (

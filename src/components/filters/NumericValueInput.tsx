@@ -68,6 +68,17 @@ export function NumericValueInput({
     [handleApply],
   );
 
+  const handleBeforeInput = useCallback(
+    (e: React.FormEvent<HTMLInputElement>) => {
+      const inputEvent = e as unknown as InputEvent;
+      const data = inputEvent.data;
+      if (data && !/^[\d.\-e+]$/.test(data)) {
+        e.preventDefault();
+      }
+    },
+    [],
+  );
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
@@ -86,6 +97,7 @@ export function NumericValueInput({
                   value={value1}
                   onChange={(e) => setValue1(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  onBeforeInput={handleBeforeInput}
                   placeholder="Min"
                   autoFocus
                 />
@@ -97,6 +109,7 @@ export function NumericValueInput({
                   value={value2}
                   onChange={(e) => setValue2(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  onBeforeInput={handleBeforeInput}
                   placeholder="Max"
                 />
               </div>
@@ -109,6 +122,7 @@ export function NumericValueInput({
                 value={value1}
                 onChange={(e) => setValue1(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onBeforeInput={handleBeforeInput}
                 placeholder="Enter number"
                 autoFocus
               />

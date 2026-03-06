@@ -4,6 +4,7 @@ import type {
   FilterState,
 } from "@/types/filters";
 import { isFilterCondition } from "@/types/filters";
+import { ipMatchesCidr, isValidCIDR } from "@/lib/ip-utils";
 
 /**
  * Parse a duration string like "24h", "7d", "30d" into milliseconds.
@@ -54,6 +55,25 @@ function matchesCondition(
   }
   if (operator === "is_not_set") {
     return rawValue == null || rawValue === "";
+  }
+
+  // IP operators (in / not_in) — work with both individual IPs and CIDR ranges
+  if (operator === "in" || operator === "not_in") {
+    const ips: string[] = Array.isArray(rawValue)
+      ? rawValue.map(String)
+      : rawValue != null
+        ? [String(rawValue)]
+        : [];
+
+    const matches = ips.some((ip) =>
+      values.some((filterVal) =>
+        isValidCIDR(filterVal)
+          ? ipMatchesCidr(ip, filterVal)
+          : ip === filterVal,
+      ),
+    );
+
+    return operator === "in" ? matches : !matches;
   }
 
   // Handle array fields (e.g., sources.countries)

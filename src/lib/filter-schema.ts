@@ -85,6 +85,13 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     type: "text",
     operators: ["is", "is_not", "contains", "does_not_contain", "starts_with", "ends_with", "is_set", "is_not_set"],
   },
+  {
+    key: "sources.ips",
+    label: "IP",
+    category: "Target & Context",
+    type: "ip",
+    operators: ["in", "not_in", "is_set", "is_not_set"],
+  },
   // Temporal
   {
     key: "timeline.last_seen",
@@ -133,4 +140,8 @@ export function getDateFields(): FilterFieldDef[] {
 
 export function getNumericFields(): FilterFieldDef[] {
   return FILTER_FIELDS.filter((f) => f.type === "numeric");
+}
+
+export function getIpFields(): FilterFieldDef[] {
+  return FILTER_FIELDS.filter((f) => f.type === "ip");
 }

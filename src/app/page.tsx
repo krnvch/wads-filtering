@@ -16,7 +16,7 @@ import {
 
 function HomeContent() {
   const {
-    tokens,
+    validatedTokens,
     expressionTree,
     hasErrors,
     chipCount,
@@ -28,6 +28,7 @@ function HomeContent() {
     insertConnector,
     insertParen,
     clearAll,
+    triggerSearch,
   } = useTokenFilterUrlState();
 
   const textSuggestions = useMemo(
@@ -62,7 +63,7 @@ function HomeContent() {
       </div>
 
       <FilterBar
-        tokens={tokens}
+        tokens={validatedTokens}
         expressionTree={expressionTree}
         hasErrors={hasErrors}
         chipCount={chipCount}
@@ -74,6 +75,7 @@ function HomeContent() {
         onInsertConnector={insertConnector}
         onInsertParen={insertParen}
         onClearAll={clearAll}
+        onSearch={triggerSearch}
         textSuggestions={textSuggestions}
         resultCount={filteredAttacks.length}
         className="mb-4"
