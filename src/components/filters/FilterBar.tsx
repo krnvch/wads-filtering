@@ -91,6 +91,7 @@ interface FilterBarProps {
   onInsertConnector: (type: "and" | "or", atIndex?: number) => void;
   onInsertParen: (type: "open_paren" | "close_paren", atIndex?: number) => void;
   onClearAll: () => void;
+  onSearch?: () => void;
   textSuggestions?: Record<string, string[]>;
   resultCount?: number;
   placeholder?: string;
@@ -110,6 +111,7 @@ export function FilterBar({
   onInsertConnector,
   onInsertParen,
   onClearAll,
+  onSearch,
   textSuggestions,
   resultCount,
   placeholder = "Filter...",
@@ -170,13 +172,14 @@ export function FilterBar({
         saveRecent(pendingField, op, vals);
         setInsertionIndex(clampedInsertionIndex + 1);
         focusAfterAdd();
+        onSearch?.();
       }
       setPendingField(null);
       setPendingValues([]);
       setPendingOperator(null);
       setOperatorConfirmed(false);
     },
-    [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
+    [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex, onSearch],
   );
 
   const handlePendingOpenChange = useCallback(

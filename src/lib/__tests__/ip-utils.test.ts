@@ -12,6 +12,9 @@ import {
   isAllowedIpChar,
   shouldAcceptSlash,
   shouldAcceptDot,
+  isValidIPv6,
+  isValidIPv6CIDR,
+  getIPv6ValidationError,
 } from "../ip-utils";
 
 describe("isValidOctet", () => {
@@ -230,5 +233,119 @@ describe("shouldAcceptDot", () => {
   it("accepts normally", () => {
     expect(shouldAcceptDot("10")).toBe(true);
     expect(shouldAcceptDot("10.0")).toBe(true);
+  });
+});
+
+describe("isValidIPv6", () => {
+  it("accepts full IPv6 address", () => {
+    expect(isValidIPv6("2001:0db8:85a3:0000:0000:8a2e:0370:7334")).toBe(true);
+  });
+
+  it("accepts shortened IPv6", () => {
+    expect(isValidIPv6("2001:db8:85a3::8a2e:370:7334")).toBe(true);
+  });
+
+  it("accepts loopback", () => {
+    expect(isValidIPv6("::1")).toBe(true);
+  });
+
+  it("accepts all-zeros", () => {
+    expect(isValidIPv6("::")).toBe(true);
+  });
+
+  it("rejects too few segments without shorthand", () => {
+    expect(isValidIPv6("2001:db8")).toBe(false);
+  });
+
+  it("rejects too many segments", () => {
+    expect(isValidIPv6("2001:db8:1:2:3:4:5:6:7")).toBe(false);
+  });
+
+  it("rejects invalid hex segment", () => {
+    expect(isValidIPv6("2001:gggg:85a3::1")).toBe(false);
+  });
+
+  it("rejects multiple ::", () => {
+    expect(isValidIPv6("2001::db8::1")).toBe(false);
+  });
+});
+
+describe("isValidIPv6CIDR", () => {
+  it("accepts valid IPv6 CIDR", () => {
+    expect(isValidIPv6CIDR("2001:db8::/32")).toBe(true);
+  });
+
+  it("accepts /128", () => {
+    expect(isValidIPv6CIDR("::1/128")).toBe(true);
+  });
+
+  it("rejects prefix > 128", () => {
+    expect(isValidIPv6CIDR("::1/129")).toBe(false);
+  });
+
+  it("rejects invalid IPv6 with CIDR", () => {
+    expect(isValidIPv6CIDR("invalid::/32")).toBe(false);
+  });
+});
+
+describe("getIPv6ValidationError", () => {
+  it("returns null for valid IPv6", () => {
+    expect(getIPv6ValidationError("2001:db8:85a3::8a2e:370:7334")).toBeNull();
+  });
+
+  it("returns error for too few segments", () => {
+    const err = getIPv6ValidationError("2001:db8");
+    expect(err).not.toBeNull();
+    expect(err).toContain("Invalid IPv6 address structure");
+  });
+
+  it("returns error for invalid segment", () => {
+    const err = getIPv6ValidationError("2001:gggg:85a3:0:0:0:0:1");
+    expect(err).toContain("Invalid segment");
+  });
+
+  it("returns error for multiple ::", () => {
+    const err = getIPv6ValidationError("2001::db8::1");
+    expect(err).toContain("Multiple '::'");
+  });
+
+  it("returns error for invalid CIDR prefix", () => {
+    const err = getIPv6ValidationError("::1/200");
+    expect(err).toContain("CIDR prefix must be 0-128");
+  });
+});
+
+describe("isValidIpValue with IPv6", () => {
+  it("accepts valid IPv6", () => {
+    expect(isValidIpValue("::1")).toBe(true);
+  });
+
+  it("accepts valid IPv6 CIDR", () => {
+    expect(isValidIpValue("2001:db8::/32")).toBe(true);
+  });
+
+  it("still accepts valid IPv4", () => {
+    expect(isValidIpValue("192.168.1.1")).toBe(true);
+    expect(isValidIpValue("10.0.0.0/8")).toBe(true);
+  });
+});
+
+describe("isAllowedIpChar with IPv6 context", () => {
+  it("allows colon as first IPv6 indicator", () => {
+    expect(isAllowedIpChar(":")).toBe(true);
+  });
+
+  it("allows hex digits in IPv6 mode", () => {
+    expect(isAllowedIpChar("a", "2001:")).toBe(true);
+    expect(isAllowedIpChar("F", "2001:")).toBe(true);
+  });
+
+  it("rejects non-hex letters in IPv6 mode", () => {
+    expect(isAllowedIpChar("g", "2001:")).toBe(false);
+    expect(isAllowedIpChar("z", "2001:")).toBe(false);
+  });
+
+  it("allows slash in IPv6 mode for CIDR", () => {
+    expect(isAllowedIpChar("/", "2001:db8::")).toBe(true);
   });
 });

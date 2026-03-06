@@ -226,7 +226,7 @@ export function IpValueInput({
           commitCurrentValue();
           return;
         }
-        if (!isAllowedIpChar(char)) return;
+        if (!isAllowedIpChar(char, validated)) return;
         if (char === "." && !shouldAcceptDot(validated)) return;
         if (char === "/" && !shouldAcceptSlash(validated)) return;
         validated += char;

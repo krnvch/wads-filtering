@@ -35,7 +35,7 @@ export function isValidCIDR(cidr: string): boolean {
  * Validate an IP filter value — either a valid IPv4 or valid CIDR.
  */
 export function isValidIpValue(value: string): boolean {
-  return isValidIPv4(value) || isValidCIDR(value);
+  return isValidIPv4(value) || isValidCIDR(value) || isValidIPv6(value) || isValidIPv6CIDR(value);
 }
 
 /**
@@ -133,9 +133,16 @@ export function ipToNumber(ip: string): number | null {
 
 /**
  * Check if a character is allowed in IP input.
- * Allowed: digits (0-9), dot (.), slash (/).
+ * IPv4 mode: digits, dot, slash.
+ * IPv6 mode (detected by presence of colon in current text): hex digits, colon, slash.
  */
-export function isAllowedIpChar(char: string): boolean {
+export function isAllowedIpChar(char: string, currentText?: string): boolean {
+  if (currentText && currentText.includes(":")) {
+    // IPv6 mode
+    return /^[0-9a-fA-F:/]$/.test(char);
+  }
+  // Colon starts IPv6 mode
+  if (char === ":") return true;
   return /^[\d./]$/.test(char);
 }
 
@@ -155,4 +162,89 @@ export function shouldAcceptDot(currentText: string): boolean {
   if (!currentText) return false;
   if (currentText.endsWith(".")) return false;
   return true;
+}
+
+/**
+ * Validate a single IPv6 segment (1-4 hex digits).
+ */
+function isValidIPv6Segment(s: string): boolean {
+  return /^[0-9a-fA-F]{1,4}$/.test(s);
+}
+
+/**
+ * Expand an IPv6 address by resolving `::` shorthand into full 8-group form.
+ * Returns null if the structure is invalid.
+ */
+function expandIPv6(ip: string): string[] | null {
+  const halves = ip.split("::");
+  if (halves.length > 2) return null; // multiple :: not allowed
+
+  if (halves.length === 1) {
+    // No :: shorthand
+    const groups = ip.split(":");
+    if (groups.length !== 8) return null;
+    return groups;
+  }
+
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if (missing < 1) return null; // :: must expand to at least one group
+  return [...left, ...Array(missing).fill("0"), ...right];
+}
+
+/**
+ * Validate a complete IPv6 address.
+ */
+export function isValidIPv6(ip: string): boolean {
+  const groups = expandIPv6(ip);
+  if (!groups || groups.length !== 8) return false;
+  return groups.every(isValidIPv6Segment);
+}
+
+/**
+ * Validate an IPv6 CIDR notation (e.g. "2001:db8::/32").
+ */
+export function isValidIPv6CIDR(cidr: string): boolean {
+  const slash = cidr.lastIndexOf("/");
+  if (slash === -1) return false;
+  const ip = cidr.slice(0, slash);
+  const prefix = cidr.slice(slash + 1);
+  if (!isValidIPv6(ip)) return false;
+  if (!/^\d{1,3}$/.test(prefix)) return false;
+  const n = parseInt(prefix, 10);
+  return n >= 0 && n <= 128;
+}
+
+/**
+ * Get a human-readable validation error for an IPv6 address.
+ * Returns null if valid.
+ */
+export function getIPv6ValidationError(input: string): string | null {
+  // Check for CIDR
+  const slash = input.lastIndexOf("/");
+  const ip = slash !== -1 ? input.slice(0, slash) : input;
+  const prefix = slash !== -1 ? input.slice(slash + 1) : null;
+
+  const groups = expandIPv6(ip);
+  if (!groups) {
+    const halves = ip.split("::");
+    if (halves.length > 2) return "Multiple '::' not allowed in IPv6 address.";
+    return "Invalid IPv6 address structure.";
+  }
+
+  if (groups.length < 8) return `Too few segments: expected 8, got ${groups.length}.`;
+  if (groups.length > 8) return `Too many segments: expected 8, got ${groups.length}.`;
+
+  for (const g of groups) {
+    if (!isValidIPv6Segment(g)) return `Invalid segment: "${g}".`;
+  }
+
+  if (prefix !== null) {
+    if (!/^\d{1,3}$/.test(prefix)) return "Invalid CIDR prefix.";
+    const n = parseInt(prefix, 10);
+    if (n < 0 || n > 128) return "CIDR prefix must be 0-128.";
+  }
+
+  return null;
 }

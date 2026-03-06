@@ -12,54 +12,72 @@ import {
   UNARY_OPERATORS,
 } from "@/types/tokens";
 import { getFieldByKey } from "./filter-schema";
+import { isValidIpValue } from "./ip-utils";
 
 /**
  * Validate a token sequence and return a new array with `error` fields populated.
  * Does NOT mutate the input — returns a new array.
  *
- * Validation rules:
- * 1. TOP_LEVEL_OR — OR connector at top level (not inside parens)
- * 2. UNBALANCED_PAREN — mismatched open/close parens
- * 3. CONSECUTIVE_CONNECTOR — two connectors in a row
- * 4. LEADING_CONNECTOR — connector at start of sequence/group
- * 5. TRAILING_CONNECTOR — connector at end of sequence/group
- * 6. EMPTY_GROUP — parens with no chips inside
- * 7. SINGLE_CHILD_GROUP — parens with only one chip
- * 8. UNKNOWN_FIELD — chip references unknown field key
- * 9. INVALID_OPERATOR — operator not valid for this field type
- * 10. EMPTY_VALUES — chip has no values (and operator isn't unary)
+ * Runs ALL validation rules (eager + deferred). Use `validateTokensEager` for
+ * per-token errors that should show immediately, and `validateTokensDeferred`
+ * for group-level errors that should only show on search initiation.
  */
 export function validateTokens(tokens: Token[]): Token[] {
   if (tokens.length === 0) return [];
+  const result = cloneAndClear(tokens);
+  runEagerChecks(result);
+  runDeferredChecks(result);
+  return result;
+}
 
-  // Clone tokens (shallow copy of each)
+/**
+ * Eager validation — runs on every token change.
+ * Catches: consecutive connectors, missing connectors, chip validity (field/operator/values/enum/ip).
+ */
+export function validateTokensEager(tokens: Token[]): Token[] {
+  if (tokens.length === 0) return [];
+  const result = cloneAndClear(tokens);
+  runEagerChecks(result);
+  return result;
+}
+
+/**
+ * Deferred validation — runs only when search is initiated.
+ * Catches: top-level OR, unbalanced parens, empty/single-child groups.
+ * Should be applied ON TOP of eager-validated tokens.
+ */
+export function validateTokensDeferred(tokens: Token[]): Token[] {
+  if (tokens.length === 0) return [];
+  // Don't clone again — caller passes already-cloned eager tokens
+  const result = tokens.map((t) => ({ ...t }));
+  runDeferredChecks(result);
+  return result;
+}
+
+function cloneAndClear(tokens: Token[]): Token[] {
   const result: Token[] = tokens.map((t) => ({ ...t }));
-
-  // Clear any existing errors
   for (const t of result) {
     delete t.error;
   }
-
-  // Rule 1: TOP_LEVEL_OR
-  checkTopLevelOr(result);
-
-  // Rule 2: UNBALANCED_PAREN
-  checkUnbalancedParens(result);
-
-  // Rule 3: CONSECUTIVE_CONNECTOR
-  checkConsecutiveConnectors(result);
-
-  // Rules 4 & 5: LEADING/TRAILING_CONNECTOR — skipped.
-  // Connectors are explicitly added by the user and dangling ones are
-  // tolerated (skipped during expression-tree evaluation).
-
-  // Rule 6 & 7: EMPTY_GROUP and SINGLE_CHILD_GROUP
-  checkGroupContent(result);
-
-  // Rule 8, 9, 10: UNKNOWN_FIELD, INVALID_OPERATOR, EMPTY_VALUES
-  checkChipValidity(result);
-
   return result;
+}
+
+function runEagerChecks(result: Token[]): void {
+  // Consecutive connectors
+  checkConsecutiveConnectors(result);
+  // Missing connectors between operands
+  checkMissingConnectors(result);
+  // Chip field/operator/value validity
+  checkChipValidity(result);
+}
+
+function runDeferredChecks(result: Token[]): void {
+  // Top-level OR
+  checkTopLevelOr(result);
+  // Unbalanced parens
+  checkUnbalancedParens(result);
+  // Empty/single-child groups
+  checkGroupContent(result);
 }
 
 function setError(token: Token, error: TokenError): void {
@@ -120,6 +138,27 @@ function checkConsecutiveConnectors(tokens: Token[]): void {
         code: "CONSECUTIVE_CONNECTOR",
         message: "Two connectors cannot appear in a row.",
       });
+    }
+  }
+}
+
+function isOperand(token: Token): boolean {
+  return isChipToken(token) || isCloseParen(token);
+}
+
+function isOperandStart(token: Token): boolean {
+  return isChipToken(token) || isOpenParen(token);
+}
+
+function checkMissingConnectors(tokens: Token[]): void {
+  for (let i = 1; i < tokens.length; i++) {
+    if (isOperand(tokens[i - 1]) && isOperandStart(tokens[i])) {
+      const error: TokenError = {
+        code: "MISSING_CONNECTOR",
+        message: "Missing operator between filters. Add AND or OR.",
+      };
+      setError(tokens[i - 1], error);
+      setError(tokens[i], { ...error });
     }
   }
 }
@@ -231,6 +270,31 @@ function checkChipValidity(tokens: Token[]): void {
         code: "EMPTY_VALUES",
         message: "Filter must have at least one value.",
       });
+      continue;
+    }
+
+    // Rule 11: INVALID_ENUM_VALUE — enum chip has values not in the allowed set
+    if (fieldDef.type === "enum" && fieldDef.values && token.values.length > 0) {
+      const invalid = token.values.filter((v) => !fieldDef.values!.includes(v));
+      if (invalid.length > 0) {
+        setError(token, {
+          code: "INVALID_ENUM_VALUE",
+          message: `Invalid value${invalid.length > 1 ? "s" : ""}: ${invalid.join(", ")}`,
+          invalidValues: invalid,
+        });
+      }
+    }
+
+    // Rule 12: INVALID_IP_VALUE — IP chip has values that aren't valid IPv4/CIDR
+    if (fieldDef.type === "ip" && token.values.length > 0) {
+      const invalid = token.values.filter((v) => !isValidIpValue(v));
+      if (invalid.length > 0) {
+        setError(token, {
+          code: "INVALID_IP_VALUE",
+          message: `Invalid IP${invalid.length > 1 ? " addresses" : " address"}: ${invalid.join(", ")}`,
+          invalidValues: invalid,
+        });
+      }
     }
   }
 }

@@ -241,6 +241,128 @@ describe("validateTokens", () => {
     });
   });
 
+  describe("MISSING_CONNECTOR", () => {
+    it("flags two adjacent chips without connector", () => {
+      const tokens: Token[] = [
+        chip("status", ["Blocked"]),
+        chip("type", ["XSS"]),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error?.code).toBe("MISSING_CONNECTOR");
+      expect(result[1].error?.code).toBe("MISSING_CONNECTOR");
+    });
+
+    it("flags chip after close paren without connector", () => {
+      const pId = generatePairId();
+      const tokens: Token[] = [
+        openP(pId),
+        chip("status", ["Blocked"]),
+        orTok(),
+        chip("type", ["XSS"]),
+        closeP(pId),
+        chip("impact", ["High"], "is"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[4].error?.code).toBe("MISSING_CONNECTOR");
+      expect(result[5].error?.code).toBe("MISSING_CONNECTOR");
+    });
+
+    it("no error when connector is present between chips", () => {
+      const tokens: Token[] = [
+        chip("status", ["Blocked"]),
+        andTok(),
+        chip("type", ["XSS"]),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error).toBeUndefined();
+      expect(result[2].error).toBeUndefined();
+    });
+  });
+
+  describe("INVALID_ENUM_VALUE", () => {
+    it("flags enum chip with invalid value", () => {
+      const tokens: Token[] = [chip("status", ["Blicked"])];
+      const result = validateTokens(tokens);
+      expect(result[0].error?.code).toBe("INVALID_ENUM_VALUE");
+      expect(result[0].error?.invalidValues).toEqual(["Blicked"]);
+    });
+
+    it("no error for valid enum value", () => {
+      const tokens: Token[] = [chip("status", ["Blocked"])];
+      const result = validateTokens(tokens);
+      expect(result[0].error).toBeUndefined();
+    });
+
+    it("flags only invalid values in multi-value enum", () => {
+      const tokens: Token[] = [
+        chip("status", ["Blocked", "Blicked", "Monitored"], "is_any_of"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error?.code).toBe("INVALID_ENUM_VALUE");
+      expect(result[0].error?.invalidValues).toEqual(["Blicked"]);
+    });
+  });
+
+  describe("INVALID_IP_VALUE", () => {
+    it("flags IP chip with invalid value", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["999.999.999.999"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error?.code).toBe("INVALID_IP_VALUE");
+      expect(result[0].error?.invalidValues).toEqual(["999.999.999.999"]);
+    });
+
+    it("no error for valid IPv4", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["192.168.1.1"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error).toBeUndefined();
+    });
+
+    it("no error for valid CIDR", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["10.0.0.0/8"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error).toBeUndefined();
+    });
+
+    it("flags only invalid IPs in multi-value", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["192.168.1.1", "not-an-ip", "10.0.0.0/8"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error?.code).toBe("INVALID_IP_VALUE");
+      expect(result[0].error?.invalidValues).toEqual(["not-an-ip"]);
+    });
+
+    it("no error for valid IPv6", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["2001:0db8:85a3:0000:0000:8a2e:0370:7334"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error).toBeUndefined();
+    });
+
+    it("no error for valid IPv6 with shorthand", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["::1"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error).toBeUndefined();
+    });
+
+    it("flags invalid IPv6", () => {
+      const tokens: Token[] = [
+        chip("sources.ips", ["2001:gg:85a3::1"], "in"),
+      ];
+      const result = validateTokens(tokens);
+      expect(result[0].error?.code).toBe("INVALID_IP_VALUE");
+    });
+  });
+
   it("does not mutate input tokens", () => {
     const tokens: Token[] = [
       chip("status", ["Blocked"]),

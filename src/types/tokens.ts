@@ -10,8 +10,12 @@ export interface TokenError {
     | "SINGLE_CHILD_GROUP"
     | "UNKNOWN_FIELD"
     | "INVALID_OPERATOR"
-    | "EMPTY_VALUES";
+    | "EMPTY_VALUES"
+    | "MISSING_CONNECTOR"
+    | "INVALID_ENUM_VALUE"
+    | "INVALID_IP_VALUE";
   message: string;
+  invalidValues?: string[];
 }
 
 // Expanded operator set for token-based system (20+ operators)
