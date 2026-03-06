@@ -120,6 +120,7 @@ export function FilterBar({
   const [pendingField, setPendingField] = useState<FilterFieldDef | null>(null);
   const [pendingValues, setPendingValues] = useState<string[]>([]);
   const [pendingOperator, setPendingOperator] = useState<TokenFilterOperator | null>(null);
+  const [operatorConfirmed, setOperatorConfirmed] = useState(false);
   // Insertion cursor position: index in the token array where new tokens will be inserted.
   // Defaults to tokens.length (end). Clicking between chips repositions it.
   const [insertionIndex, setInsertionIndex] = useState(tokens.length);
@@ -141,6 +142,8 @@ export function FilterBar({
     setPendingField(field);
     setPendingValues([]);
     setPendingOperator(getDefaultOperatorForField(field));
+    // IP shows operator picker first; other types go straight to value input
+    setOperatorConfirmed(field.type !== "ip");
   }, []);
 
   const saveRecent = useCallback(
@@ -171,6 +174,7 @@ export function FilterBar({
       setPendingField(null);
       setPendingValues([]);
       setPendingOperator(null);
+      setOperatorConfirmed(false);
     },
     [pendingField, pendingValues, pendingOperator, onAddFilter, focusAfterAdd, saveRecent, clampedInsertionIndex],
   );
@@ -294,6 +298,18 @@ export function FilterBar({
 
   useKeyboardShortcuts(shortcuts);
 
+  const handleOperatorConfirm = useCallback((op: TokenFilterOperator) => {
+    setPendingOperator(op);
+    setOperatorConfirmed(true);
+  }, []);
+
+  const handlePendingCancel = useCallback(() => {
+    setPendingField(null);
+    setPendingValues([]);
+    setPendingOperator(null);
+    setOperatorConfirmed(false);
+  }, []);
+
   const pendingSelector = pendingField
     ? renderValueSelector(
         pendingField,
@@ -303,7 +319,9 @@ export function FilterBar({
         handlePendingOpenChange,
         textSuggestions,
         pendingOperator,
-        setPendingOperator,
+        operatorConfirmed,
+        handleOperatorConfirm,
+        handlePendingCancel,
       )
     : null;
 
@@ -488,7 +506,9 @@ function renderValueSelector(
   onOpenChange: (open: boolean) => void,
   textSuggestions?: Record<string, string[]>,
   pendingOperator?: TokenFilterOperator | null,
-  setPendingOperator?: (op: TokenFilterOperator) => void,
+  operatorConfirmed?: boolean,
+  onOperatorConfirm?: (op: TokenFilterOperator) => void,
+  onCancel?: () => void,
 ) {
   const trigger = (
     <span className="text-sm text-muted-foreground">
@@ -549,7 +569,9 @@ function renderValueSelector(
           datasetIps={textSuggestions?.["sources.ips"]}
           variant="inline"
           operator={(pendingOperator as TokenFilterOperator) ?? "in"}
-          onOperatorChange={setPendingOperator}
+          operatorConfirmed={operatorConfirmed ?? false}
+          onOperatorChange={(op) => onOperatorConfirm?.(op)}
+          onCancel={onCancel}
         >
           {trigger}
         </IpValueInput>

@@ -26,7 +26,7 @@ import {
   computeCidrSuggestions,
 } from "@/lib/ip-utils";
 import { cn } from "@/lib/utils";
-import { OPERATOR_LABELS } from "@/types/tokens";
+import { OPERATOR_LABELS, OPERATORS_BY_FIELD_TYPE } from "@/types/tokens";
 import type { TokenFilterOperator } from "@/types/tokens";
 
 interface IpValueInputProps {
@@ -38,12 +38,16 @@ interface IpValueInputProps {
   onConfirm: (overrideValues?: string[]) => void;
   datasetIps?: string[];
   children: React.ReactNode;
-  /** "inline" renders [Field][Op][Input] with dropdown. "popover" wraps children in a Popover. */
+  /** "inline" renders as a chip in the filter bar. "popover" wraps children in a Popover (for FilterChip editing). */
   variant?: "inline" | "popover";
-  /** Operator to display in inline variant */
+  /** Current operator (inline variant) */
   operator?: TokenFilterOperator;
-  /** Callback when operator is toggled in inline variant */
+  /** Whether operator has been confirmed (inline variant). When false, shows operator picker. */
+  operatorConfirmed?: boolean;
+  /** Called when user selects an operator in the picker (inline variant) */
   onOperatorChange?: (op: TokenFilterOperator) => void;
+  /** Called to cancel/dismiss the inline creation */
+  onCancel?: () => void;
 }
 
 function getValidationError(value: string): string | null {
@@ -64,7 +68,7 @@ function getValidationError(value: string): string | null {
   return "Invalid IP address";
 }
 
-/** Shared suggestions dropdown content */
+/** Suggestions dropdown content */
 function SuggestionsContent({
   matchingIps,
   cidrSuggestions,
@@ -80,7 +84,6 @@ function SuggestionsContent({
 
   return (
     <div className="flex flex-col">
-      {/* Matching IPs section */}
       {matchingIps.length > 0 && (
         <div
           className="max-h-[120px] overflow-y-auto py-1"
@@ -105,10 +108,8 @@ function SuggestionsContent({
         </div>
       )}
 
-      {/* Separator between sections */}
       {matchingIps.length > 0 && cidrSuggestions.length > 0 && <Separator />}
 
-      {/* CIDR suggestion section */}
       {cidrSuggestions.length > 0 && (
         <div className="py-1" role="listbox" aria-label="CIDR suggestions">
           <div className="px-3 py-1 text-xs text-muted-foreground">
@@ -138,53 +139,6 @@ function SuggestionsContent({
   );
 }
 
-/** Selected value badges with validation */
-function SelectedValueBadges({
-  values,
-  onRemove,
-}: {
-  values: string[];
-  onRemove: (value: string) => void;
-}) {
-  if (values.length === 0) return null;
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      {values.map((value) => {
-        const error = getValidationError(value);
-        const badge = (
-          <Badge
-            key={value}
-            variant={error ? "destructive" : "secondary"}
-            className="gap-1 text-xs"
-          >
-            {value}
-            <button
-              type="button"
-              onClick={() => onRemove(value)}
-              aria-label={`Remove ${value}`}
-              className="ml-0.5 hover:text-foreground"
-            >
-              <X className="size-3" />
-            </button>
-          </Badge>
-        );
-
-        if (error) {
-          return (
-            <Tooltip key={value}>
-              <TooltipTrigger asChild>{badge}</TooltipTrigger>
-              <TooltipContent>{error}</TooltipContent>
-            </Tooltip>
-          );
-        }
-
-        return badge;
-      })}
-    </TooltipProvider>
-  );
-}
-
 export function IpValueInput({
   open,
   onOpenChange,
@@ -196,7 +150,9 @@ export function IpValueInput({
   children,
   variant = "popover",
   operator = "in",
+  operatorConfirmed = true,
   onOperatorChange,
+  onCancel,
 }: IpValueInputProps) {
   const [inputValue, setInputValue] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -238,7 +194,6 @@ export function IpValueInput({
       }
       setInputValue("");
       setFocusedIndex(-1);
-      // Re-focus input after selecting a suggestion
       requestAnimationFrame(() => {
         inputRef.current?.focus();
       });
@@ -258,14 +213,12 @@ export function IpValueInput({
       const newValue = e.target.value;
       const oldValue = inputValue;
 
-      // Deletion — always allow
       if (newValue.length < oldValue.length) {
         setInputValue(newValue);
         setFocusedIndex(-1);
         return;
       }
 
-      // Validate each new character
       const addedChars = newValue.slice(oldValue.length);
       let validated = oldValue;
       for (const char of addedChars) {
@@ -322,6 +275,7 @@ export function IpValueInput({
 
       if (e.key === "Escape") {
         e.preventDefault();
+        onCancel?.();
         onOpenChange(false);
         return;
       }
@@ -342,99 +296,160 @@ export function IpValueInput({
       onSelectionChange,
       onConfirm,
       onOpenChange,
+      onCancel,
       addValue,
     ],
   );
 
   useEffect(() => {
-    if (open) {
+    if (open && operatorConfirmed) {
       setInputValue("");
       setFocusedIndex(-1);
       requestAnimationFrame(() => {
         inputRef.current?.focus();
       });
     }
-  }, [open]);
+  }, [open, operatorConfirmed]);
 
   const operatorLabel =
     OPERATOR_LABELS[operator] ?? operator.replace(/_/g, " ");
 
-  // Shared input element
-  const inputElement = (
-    <input
-      ref={inputRef}
-      value={inputValue}
-      onChange={handleInputChange}
-      onKeyDown={handleKeyDown}
-      placeholder="IP address..."
-      className={cn(
-        "bg-transparent text-sm outline-none placeholder:text-muted-foreground",
-        variant === "inline" ? "w-28 min-w-16 flex-1" : "h-8 w-full rounded-md border border-input px-3 py-1",
-      )}
-      aria-label={`Enter ${fieldDef.label} value`}
-      autoComplete="off"
-    />
-  );
+  // Format values for display in the chip (like "192.0.0.0/8, 10.0.0.1")
+  const valuesText = selectedValues.join(", ");
 
-  // ── Inline variant: [Field][Operator][...values][Input] with suggestions dropdown ──
+  // ── Inline variant: renders as a chip in the filter bar (matching FilterChip styling) ──
   if (variant === "inline") {
     if (!open) return <>{children}</>;
 
+    const ipOperators = OPERATORS_BY_FIELD_TYPE.ip;
+
+    // Determine what to show in the dropdown
+    const showOperatorPicker = !operatorConfirmed;
+    const showSuggestions = operatorConfirmed && hasSuggestions;
+    const dropdownOpen = showOperatorPicker || showSuggestions;
+
     return (
-      <Popover open={hasSuggestions} onOpenChange={() => {}}>
+      <Popover open={dropdownOpen} onOpenChange={() => {}}>
         <PopoverAnchor asChild>
-          <span
-            className="inline-flex items-center gap-1"
-            onBlur={(e) => {
-              // Close when focus leaves the entire inline container
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                if (inputValue.trim()) {
-                  commitCurrentValue();
-                }
-                onOpenChange(false);
-              }
-            }}
+          {/* Single chip — matches FilterChip's Badge styling exactly */}
+          <Badge
+            variant="secondary"
+            className="group relative gap-1 rounded-md py-1 pl-2 pr-2 text-sm font-normal"
           >
-            <Badge variant="outline" className="shrink-0 px-2 py-0.5 text-xs font-medium">
-              {fieldDef.label}
-            </Badge>
-            <Badge
-              variant="outline"
-              className="shrink-0 cursor-pointer px-2 py-0.5 text-xs font-medium uppercase hover:bg-accent"
-              onClick={(e) => {
-                e.stopPropagation();
-                const next = operator === "in" ? "not_in" : "in";
-                onOperatorChange?.(next);
-                // Re-focus input after operator toggle
-                requestAnimationFrame(() => inputRef.current?.focus());
+            {/* Field label */}
+            <span className="text-foreground">{fieldDef.label}</span>
+
+            {/* Operator */}
+            <span className="text-muted-foreground">{operatorLabel}</span>
+
+            {/* Committed values (blue, like FilterChip) */}
+            {valuesText && (
+              <span className="text-blue-600 dark:text-blue-400">
+                {valuesText}
+              </span>
+            )}
+
+            {/* Inline input for typing new values */}
+            {operatorConfirmed && (
+              <input
+                ref={inputRef}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder={selectedValues.length > 0 ? "" : "IP address..."}
+                className="w-24 min-w-12 flex-shrink bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                aria-label={`Enter ${fieldDef.label} value`}
+                autoComplete="off"
+                onBlur={(e) => {
+                  // Don't close if clicking inside the dropdown
+                  const popoverContent = e.currentTarget.closest(
+                    "[data-radix-popper-content-wrapper]",
+                  );
+                  if (popoverContent?.contains(e.relatedTarget as Node)) return;
+
+                  // Commit and close on blur outside
+                  if (inputValue.trim()) {
+                    commitCurrentValue();
+                  }
+                  // Small delay to allow click handlers on suggestions to fire
+                  setTimeout(() => {
+                    if (!document.activeElement?.closest("[data-radix-popper-content-wrapper]")) {
+                      if (selectedValues.length > 0 || inputValue.trim()) {
+                        onConfirm();
+                      } else {
+                        onCancel?.();
+                        onOpenChange(false);
+                      }
+                    }
+                  }, 150);
+                }}
+              />
+            )}
+
+            {/* Remove / Cancel button */}
+            <button
+              type="button"
+              onClick={() => {
+                onCancel?.();
+                onOpenChange(false);
               }}
-              role="button"
-              aria-label={`Toggle operator, currently ${operatorLabel}`}
+              className="ml-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+              aria-label="Cancel"
             >
-              {operatorLabel}
-            </Badge>
-            <SelectedValueBadges values={selectedValues} onRemove={removeValue} />
-            {inputElement}
-          </span>
+              <X className="size-3" />
+            </button>
+          </Badge>
         </PopoverAnchor>
+
         <PopoverContent
-          className="w-64 p-0"
+          className="w-56 p-0"
           align="start"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
-          <SuggestionsContent
-            matchingIps={matchingIps}
-            cidrSuggestions={cidrSuggestions}
-            focusedIndex={focusedIndex}
-            onSelect={addValue}
-          />
+          {/* Operator picker */}
+          {showOperatorPicker && (
+            <div className="py-1" role="listbox" aria-label="Select operator">
+              {[...ipOperators.primary, ...ipOperators.advanced].map((op) => (
+                <button
+                  key={op}
+                  type="button"
+                  className={cn(
+                    "w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-accent",
+                    op === operator && "bg-accent font-medium",
+                  )}
+                  onClick={() => onOperatorChange?.(op)}
+                  role="option"
+                  aria-selected={op === operator}
+                >
+                  {OPERATOR_LABELS[op] ?? op.replace(/_/g, " ")}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Suggestions */}
+          {showSuggestions && (
+            <>
+              <SuggestionsContent
+                matchingIps={matchingIps}
+                cidrSuggestions={cidrSuggestions}
+                focusedIndex={focusedIndex}
+                onSelect={addValue}
+              />
+              <div className="border-t px-3 py-2">
+                <span className="text-xs text-muted-foreground">
+                  ↵ to apply &middot; Space/Comma to add value
+                </span>
+              </div>
+            </>
+          )}
         </PopoverContent>
       </Popover>
     );
   }
 
-  // ── Popover variant: standard popover with input + suggestions inside ──
+  // ── Popover variant (used in FilterChip editing) ──
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
@@ -444,17 +459,55 @@ export function IpValueInput({
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex flex-col">
-          {/* Selected values as removable badges */}
           {selectedValues.length > 0 && (
             <div className="flex flex-wrap gap-1 border-b px-3 py-2">
-              <SelectedValueBadges values={selectedValues} onRemove={removeValue} />
+              <TooltipProvider delayDuration={300}>
+                {selectedValues.map((value) => {
+                  const error = getValidationError(value);
+                  const badge = (
+                    <Badge
+                      key={value}
+                      variant={error ? "destructive" : "secondary"}
+                      className="gap-1 text-xs"
+                    >
+                      {value}
+                      <button
+                        type="button"
+                        onClick={() => removeValue(value)}
+                        aria-label={`Remove ${value}`}
+                        className="ml-0.5 hover:text-foreground"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </Badge>
+                  );
+                  if (error) {
+                    return (
+                      <Tooltip key={value}>
+                        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+                        <TooltipContent>{error}</TooltipContent>
+                      </Tooltip>
+                    );
+                  }
+                  return badge;
+                })}
+              </TooltipProvider>
             </div>
           )}
 
-          {/* Input field */}
-          <div className="px-3 py-2">{inputElement}</div>
+          <div className="px-3 py-2">
+            <input
+              ref={inputRef}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="IP address..."
+              className="h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground"
+              aria-label={`Enter ${fieldDef.label} value`}
+              autoComplete="off"
+            />
+          </div>
 
-          {/* Suggestions */}
           {hasSuggestions && (
             <div className="border-t">
               <SuggestionsContent
@@ -466,7 +519,6 @@ export function IpValueInput({
             </div>
           )}
 
-          {/* Keyboard hint */}
           <div className="border-t px-3 py-2">
             <span className="text-xs text-muted-foreground">
               ↵ to apply &middot; Space/Comma to add value
